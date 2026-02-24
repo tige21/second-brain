@@ -1,0 +1,82 @@
+import asyncio
+import json
+from langchain_core.tools import tool
+from services.osrm import calculate_route as _osrm_route
+from db.database import get_conn
+from db.models import get_setting, get_address
+
+
+def _resolve_to_coords(value: str, conn) -> str | None:
+    """Resolve address name, text address, or coords string to 'lat,lon'."""
+    # Already coordinates?
+    parts = value.replace(' ', '').split(',')
+    if len(parts) == 2:
+        try:
+            float(parts[0])
+            float(parts[1])
+            return value.replace(' ', '')
+        except ValueError:
+            pass
+    # Named address in address book?
+    addr = get_address(conn, value.lower())
+    if addr:
+        return addr['coords']
+    # Active address fallback
+    active_name = get_setting(conn, 'active_address')
+    if active_name:
+        active = get_address(conn, active_name)
+        if active:
+            return active['coords']
+    return None
+
+
+@tool
+def calculate_route(
+    origin: str,
+    destination: str,
+    mode: str = "driving",
+) -> str:
+    """
+    Calculate route between two points using OSRM (free routing).
+    origin: address name from address book (e.g. "дом"), coordinates "lat,lon", or text address.
+    destination: same format as origin.
+    mode: "driving" (car) or "masstransit" (public transport, also uses car routing).
+    Call this TWICE for each route request: once with mode="driving", once with mode="masstransit".
+    """
+    try:
+        conn = get_conn()
+        origin_coords = _resolve_to_coords(origin, conn)
+        dest_coords = _resolve_to_coords(destination, conn)
+
+        if not origin_coords:
+            return f"Не удалось определить координаты для '{origin}'. Добавь адрес в адресную книгу."
+        if not dest_coords:
+            return f"Не удалось определить координаты для '{destination}'."
+
+        loop = asyncio.new_event_loop()
+        result = loop.run_until_complete(_osrm_route(origin_coords, dest_coords, mode))
+        loop.close()
+
+        if "error" in result:
+            return f"Ошибка маршрута ({mode}): {result['error']}"
+
+        duration = result['duration_minutes']
+        distance = result['distance_km']
+
+        if duration > 60:
+            indicator = "🔴"
+        elif duration > 30:
+            indicator = "🟡"
+        else:
+            indicator = "🟢"
+
+        mode_label = {
+            "driving": "🚗 На машине",
+            "masstransit": "🚌 Общественный",
+            "walking": "🚶 Пешком",
+            "cycling": "🚲 Велосипед",
+        }.get(mode, mode)
+
+        return f"{indicator} {mode_label}: {duration} мин, {distance} км"
+    except Exception as e:
+        return f"Ошибка при расчёте маршрута: {e}"
