@@ -1,13 +1,12 @@
-import asyncio
-import json
+import sqlite3
 from langchain_core.tools import tool
 from services.osrm import calculate_route as _osrm_route
 from db.database import get_conn
 from db.models import get_setting, get_address
 
 
-def _resolve_to_coords(value: str, conn) -> str | None:
-    """Resolve address name, text address, or coords string to 'lat,lon'."""
+def _resolve_to_coords(value: str, conn: sqlite3.Connection) -> str | None:
+    """Resolve address name or 'lat,lon' string to normalised 'lat,lon'."""
     # Already coordinates?
     parts = value.replace(' ', '').split(',')
     if len(parts) == 2:
@@ -31,7 +30,7 @@ def _resolve_to_coords(value: str, conn) -> str | None:
 
 
 @tool
-def calculate_route(
+async def calculate_route(
     origin: str,
     destination: str,
     mode: str = "driving",
@@ -53,15 +52,13 @@ def calculate_route(
         if not dest_coords:
             return f"Не удалось определить координаты для '{destination}'."
 
-        loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(_osrm_route(origin_coords, dest_coords, mode))
-        loop.close()
+        result = await _osrm_route(origin_coords, dest_coords, mode)
 
         if "error" in result:
             return f"Ошибка маршрута ({mode}): {result['error']}"
 
-        duration = result['duration_minutes']
-        distance = result['distance_km']
+        duration: int = result['duration_minutes']
+        distance: float = result['distance_km']
 
         if duration > 60:
             indicator = "🔴"

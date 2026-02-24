@@ -1,8 +1,10 @@
+import asyncio
 import json
+import sqlite3
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from config import OPENAI_API_KEY, OPENAI_MODEL, TIMEZONE_OFFSET
 from db.database import get_conn
@@ -56,10 +58,10 @@ _executor = AgentExecutor(
 )
 
 
-def _load_langchain_history(chat_id: int) -> list:
+def _load_langchain_history(chat_id: int) -> list[BaseMessage]:
     conn = get_conn()
     raw = load_memory(conn, chat_id)
-    messages = []
+    messages: list[BaseMessage] = []
     for msg in raw:
         if msg["role"] == "user":
             messages.append(HumanMessage(content=msg["content"]))
@@ -77,7 +79,7 @@ def _save_to_memory(chat_id: int, user_msg: str, assistant_msg: str, window: int
     save_memory(conn, chat_id, trimmed)
 
 
-def _get_address_context(conn) -> dict:
+def _get_address_context(conn: sqlite3.Connection) -> dict[str, str]:
     active_name = get_setting(conn, 'active_address') or ''
     active_addr = get_address(conn, active_name) if active_name else None
     active_str = f"{active_name}: {active_addr['address']}" if active_addr else "не задан"
@@ -107,7 +109,8 @@ def _get_address_context(conn) -> dict:
 async def run_agent(chat_id: int, user_message: str) -> str:
     """Run the AI agent for a given message. Returns response text."""
     conn = get_conn()
-    context = prefetch_context()
+    # Run sync Google API calls in a thread to avoid blocking the event loop
+    context = await asyncio.to_thread(prefetch_context)
     addr_ctx = _get_address_context(conn)
     tz_offset = int(get_setting(conn, 'timezone_offset') or TIMEZONE_OFFSET)
 
