@@ -4,7 +4,7 @@ from services import google_calendar as gcal
 from services import google_tasks as gtasks
 
 
-def prefetch_context() -> dict:
+def prefetch_context() -> dict[str, str]:
     """
     Fetch today+tomorrow events and all active tasks before calling agent.
     Returns dict with 'today_events' and 'today_tasks' as JSON strings.

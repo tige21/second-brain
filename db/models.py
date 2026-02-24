@@ -1,7 +1,6 @@
 import json
 import sqlite3
 from datetime import datetime, timezone
-from typing import Optional
 
 
 def save_address(conn: sqlite3.Connection, name: str, address: str, coords: str) -> None:
@@ -13,7 +12,7 @@ def save_address(conn: sqlite3.Connection, name: str, address: str, coords: str)
     conn.commit()
 
 
-def get_address(conn: sqlite3.Connection, name: str) -> Optional[dict]:
+def get_address(conn: sqlite3.Connection, name: str) -> dict | None:
     row = conn.execute(
         "SELECT name, address, coords, saved_at FROM addresses WHERE name = ?", (name,)
     ).fetchone()
@@ -37,7 +36,7 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
     conn.commit()
 
 
-def get_setting(conn: sqlite3.Connection, key: str) -> Optional[str]:
+def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
     row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row[0] if row else None
 
@@ -67,7 +66,7 @@ def update_rate_limit(conn: sqlite3.Connection, chat_id: int) -> None:
     conn.commit()
 
 
-def get_last_request_time(conn: sqlite3.Connection, chat_id: int) -> Optional[datetime]:
+def get_last_request_time(conn: sqlite3.Connection, chat_id: int) -> datetime | None:
     row = conn.execute(
         "SELECT last_request_at FROM rate_limit WHERE chat_id = ?", (chat_id,)
     ).fetchone()

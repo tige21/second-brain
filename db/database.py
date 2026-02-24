@@ -1,10 +1,11 @@
 import sqlite3
 import os
-from typing import Optional
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    parent = os.path.dirname(db_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     _run_migrations(conn)
@@ -43,7 +44,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-_conn: Optional[sqlite3.Connection] = None
+_conn: sqlite3.Connection | None = None
 
 
 def get_conn() -> sqlite3.Connection:
