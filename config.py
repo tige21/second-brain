@@ -17,10 +17,6 @@ GOOGLE_TOKEN_JSON: str = os.getenv("GOOGLE_TOKEN_JSON", "token.json")
 GOOGLE_CALENDAR_ID: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 GOOGLE_TASKS_LIST_ID: str = os.getenv("GOOGLE_TASKS_LIST_ID", "@default")
 
-# Yandex
-YANDEX_GEOCODER_API_KEY: str = os.getenv("YANDEX_GEOCODER_API_KEY", "")
-YANDEX_ROUTER_API_KEY: str = os.getenv("YANDEX_ROUTER_API_KEY", "")
-
 # App
 RATE_LIMIT_SECONDS: int = int(os.getenv("RATE_LIMIT_SECONDS", "5"))
 DB_PATH: str = os.getenv("DB_PATH", "data/brain.db")
