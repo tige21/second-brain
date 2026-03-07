@@ -8,7 +8,7 @@ def get_calendar_events(start_datetime: str, end_datetime: str) -> str:
     """
     Get Google Calendar events for a date range.
     start_datetime and end_datetime must be ISO 8601 UTC strings, e.g. "2024-01-15T00:00:00Z".
-    Returns JSON array of events with id, summary, start, end, location fields.
+    Returns JSON array of events with id, summary, start, end, location, recurringEventId fields.
     """
     try:
         events = gcal.list_events(start_datetime, end_datetime)
@@ -42,7 +42,7 @@ def create_calendar_event(
     start_utc / end_utc: ISO 8601 UTC, e.g. "2024-01-15T11:00:00Z".
     location: optional venue address.
     description: optional notes.
-    recurrence: optional RRULE string WITHOUT "RRULE:" prefix, e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR".
+    recurrence: optional RRULE string WITHOUT "RRULE:" prefix, e.g. "FREQ=WEEKLY;BYDAY=SA,SU".
     """
     try:
         rec = [recurrence] if recurrence else None
@@ -64,8 +64,9 @@ def update_calendar_event(
     """
     Update an existing Google Calendar event by event_id.
     Only provide fields that need to be changed. Others will be left unchanged.
-    For recurring event instance: use instance ID (contains underscore).
+    For a single occurrence of recurring event: use instance ID (contains underscore).
     For entire series: use recurringEventId.
+    To delete this and all future occurrences: use delete_future_occurrences tool instead.
     """
     try:
         fields = {}
@@ -83,3 +84,21 @@ def update_calendar_event(
         return f"✅ Событие обновлено: {event.get('summary')} (id: {event_id})"
     except Exception as e:
         return f"Ошибка при обновлении события: {e}"
+
+
+@tool
+def delete_future_occurrences(instance_id: str) -> str:
+    """
+    Delete this and ALL FOLLOWING occurrences of a recurring event.
+    Use when user says: "убрать с этой недели", "удалить со следующего раза",
+    "убрать все последующие", "отменить начиная с сегодня".
+    instance_id: the ID of the specific recurring event instance (contains underscore _).
+    The parent recurring event will be updated to end before this instance.
+    """
+    try:
+        result = gcal.delete_this_and_following(instance_id)
+        if result.get("status") == "deleted single event":
+            return "✅ Одиночное событие удалено."
+        return f"✅ Это и все последующие повторения удалены. Серия завершена до этой даты."
+    except Exception as e:
+        return f"Ошибка при удалении последующих событий: {e}"
