@@ -11,7 +11,7 @@ from db.database import get_conn
 from db.models import load_memory, save_memory, get_setting, get_address, list_addresses
 from agent.system_prompt import build_system_prompt
 from agent.prefetch import prefetch_context
-from agent.tools.calendar_tool import get_calendar_events, create_calendar_event, update_calendar_event
+from agent.tools.calendar_tool import get_calendar_events, create_calendar_event, update_calendar_event, delete_future_occurrences
 from agent.tools.tasks_tool import get_tasks, create_task, update_task, delete_task
 from agent.tools.batch_delete import batch_delete_events
 from agent.tools.route_tool import calculate_route
@@ -22,6 +22,7 @@ TOOLS = [
     get_calendar_events,
     create_calendar_event,
     update_calendar_event,
+    delete_future_occurrences,
     batch_delete_events,
     get_tasks,
     create_task,
