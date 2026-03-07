@@ -38,9 +38,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await message.reply_text("✅ История диалога сброшена.")
         return
 
-    # Forwarded messages
+    # Forwarded messages (PTB 21.x uses forward_origin instead of forward_date)
     user_input = text
-    if message.forward_date or message.forward_origin:
+    if message.forward_origin:
         user_input = f'📨 Пересланное сообщение: "{text}"\nИзвлеки задачу или событие.'
 
     # Reply to another message
