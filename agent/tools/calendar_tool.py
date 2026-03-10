@@ -1,6 +1,9 @@
 import json
 from langchain_core.tools import tool
 from services import google_calendar as gcal
+from db.database import get_conn
+from db.models import push_undo
+from agent.context import get_current_chat_id, get_current_session_id
 
 
 @tool
@@ -11,7 +14,8 @@ def get_calendar_events(start_datetime: str, end_datetime: str) -> str:
     Returns JSON array of events with id, summary, start, end, location, recurringEventId fields.
     """
     try:
-        events = gcal.list_events(start_datetime, end_datetime)
+        chat_id = get_current_chat_id()
+        events = gcal.list_events(chat_id, start_datetime, end_datetime)
         result = []
         for e in events:
             result.append({
@@ -24,7 +28,7 @@ def get_calendar_events(start_datetime: str, end_datetime: str) -> str:
             })
         return json.dumps(result, ensure_ascii=False)
     except Exception as e:
-        return f"Ошибка при получении событий: {e}"
+        return f"❌ Ошибка при получении событий: {e}"
 
 
 @tool
@@ -45,11 +49,13 @@ def create_calendar_event(
     recurrence: optional RRULE string WITHOUT "RRULE:" prefix, e.g. "FREQ=WEEKLY;BYDAY=SA,SU".
     """
     try:
+        chat_id = get_current_chat_id()
         rec = [recurrence] if recurrence else None
-        event = gcal.create_event(summary, start_utc, end_utc, location, description, rec)
+        event = gcal.create_event(chat_id, summary, start_utc, end_utc, location, description, rec)
+        push_undo(get_conn(), chat_id, 'create_event', event['id'], event['summary'], get_current_session_id())
         return f"✅ Событие создано: {event['summary']} (id: {event['id']})"
     except Exception as e:
-        return f"Ошибка при создании события: {e}"
+        return f"❌ Ошибка при создании события: {e}"
 
 
 @tool
@@ -60,6 +66,7 @@ def update_calendar_event(
     end_utc: str = None,
     location: str = None,
     description: str = None,
+    recurrence: str = None,
 ) -> str:
     """
     Update an existing Google Calendar event by event_id.
@@ -67,8 +74,12 @@ def update_calendar_event(
     For a single occurrence of recurring event: use instance ID (contains underscore).
     For entire series: use recurringEventId.
     To delete this and all future occurrences: use delete_future_occurrences tool instead.
+    recurrence: new RRULE without "RRULE:" prefix, e.g. "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR".
+    When changing recurrence of a series, any event_id (instance or parent) works — the
+    parent event is updated automatically. Use for: "убрать с выходных", "только по будням", etc.
     """
     try:
+        chat_id = get_current_chat_id()
         fields = {}
         if summary:
             fields['summary'] = summary
@@ -80,10 +91,33 @@ def update_calendar_event(
             fields['location'] = location
         if description is not None:
             fields['description'] = description
-        event = gcal.update_event(event_id, **fields)
+        if recurrence is not None:
+            fields['recurrence'] = recurrence
+        if not fields:
+            return "❌ Не указано ни одного поля для обновления. Укажи что именно нужно изменить."
+        event = gcal.update_event(chat_id, event_id, **fields)
         return f"✅ Событие обновлено: {event.get('summary')} (id: {event_id})"
     except Exception as e:
-        return f"Ошибка при обновлении события: {e}"
+        return f"❌ Ошибка при обновлении события: {e}"
+
+
+@tool
+def delete_calendar_event(event_id: str) -> str:
+    """
+    Fully delete a calendar event or an ENTIRE recurring series.
+    Use when user says: "удали", "убери совсем", "удали полностью", "удали серию".
+    If event_id is an instance (contains '_'): automatically resolves to the parent
+    recurring event and deletes the ENTIRE series — not just one occurrence.
+    If event_id has no '_': deletes that single non-recurring event.
+    Do NOT use for: deleting only one occurrence (→ delete_single_occurrence),
+    or only future occurrences (→ delete_future_occurrences).
+    """
+    try:
+        chat_id = get_current_chat_id()
+        deleted_id = gcal.delete_event_or_series(chat_id, event_id)
+        return f"✅ Событие удалено полностью (id: {deleted_id})."
+    except Exception as e:
+        return f"❌ Ошибка при удалении события: {e}"
 
 
 @tool
@@ -96,9 +130,55 @@ def delete_future_occurrences(instance_id: str) -> str:
     The parent recurring event will be updated to end before this instance.
     """
     try:
-        result = gcal.delete_this_and_following(instance_id)
+        chat_id = get_current_chat_id()
+        result = gcal.delete_this_and_following(chat_id, instance_id)
         if result.get("status") == "deleted single event":
             return "✅ Одиночное событие удалено."
         return f"✅ Это и все последующие повторения удалены. Серия завершена до этой даты."
     except Exception as e:
-        return f"Ошибка при удалении последующих событий: {e}"
+        return f"❌ Ошибка при удалении последующих событий: {e}"
+
+
+@tool
+def delete_single_occurrence(instance_id: str) -> str:
+    """
+    Delete ONE specific occurrence of a recurring event, leaving all others intact.
+    instance_id MUST contain underscore (_) — it is the instance ID from get_calendar_events.
+    Use when user says: "убрать только в эту пятницу", "отменить встречу 15 марта",
+    "пропустить в этот раз", "убрать только сегодня/завтра".
+    Do NOT use for: deleting all future occurrences (→ delete_future_occurrences),
+    or removing a weekday permanently (→ exclude_recurring_weekday).
+    """
+    try:
+        if '_' not in instance_id:
+            return "❌ Это не ID конкретного повторения (нет '_'). Получи список событий и используй instance ID."
+        chat_id = get_current_chat_id()
+        event = gcal.delete_single_occurrence(chat_id, instance_id)
+        summary = event.get('summary', instance_id)
+        push_undo(get_conn(), chat_id, 'delete_occurrence', instance_id, summary, get_current_session_id())
+        return f"✅ Повторение «{summary}» отменено. Остальные даты серии не изменены."
+    except Exception as e:
+        return f"❌ Ошибка при отмене повторения: {e}"
+
+
+@tool
+def exclude_recurring_weekday(event_id: str, weekday: str) -> str:
+    """
+    Permanently remove a specific weekday from a recurring event's schedule.
+    event_id: any instance or parent ID of the recurring series.
+    weekday: two-letter code — MO, TU, WE, TH, FR, SA, SU.
+    Use when user says: "убрать только по пятницам", "не ставить по выходным навсегда",
+    "исключи субботы", "убрать по понедельникам".
+    Handles FREQ=DAILY automatically (converts to FREQ=WEEKLY with all days except excluded).
+    """
+    try:
+        chat_id = get_current_chat_id()
+        event = gcal.exclude_weekday_from_recurrence(chat_id, event_id, weekday.upper())
+        days_ru = {'MO': 'понедельники', 'TU': 'вторники', 'WE': 'среды',
+                   'TH': 'четверги', 'FR': 'пятницы', 'SA': 'субботы', 'SU': 'воскресенья'}
+        day_name = days_ru.get(weekday.upper(), weekday)
+        return f"✅ {event.get('summary', 'Событие')} — {day_name} исключены из расписания навсегда."
+    except ValueError as e:
+        return f"❌ {e}"
+    except Exception as e:
+        return f"❌ Ошибка при изменении расписания: {e}"

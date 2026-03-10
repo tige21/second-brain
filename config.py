@@ -19,6 +19,7 @@ GOOGLE_TASKS_LIST_ID: str = os.getenv("GOOGLE_TASKS_LIST_ID", "@default")
 
 # App
 RATE_LIMIT_SECONDS: int = int(os.getenv("RATE_LIMIT_SECONDS", "5"))
+OPENAI_PROXY_URL: str | None = os.getenv("OPENAI_PROXY_URL")
 DB_PATH: str = os.getenv("DB_PATH", "data/brain.db")
 TIMEZONE_OFFSET: int = int(os.getenv("TIMEZONE_OFFSET", "3"))
 DEFAULT_TRAVEL_MINUTES: int = 45

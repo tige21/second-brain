@@ -3,17 +3,13 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from config import TELEGRAM_CHAT_ID, RATE_LIMIT_SECONDS
 from db.database import get_conn
-from db.models import update_rate_limit, get_last_request_time
+from db.models import (
+    update_rate_limit, get_last_request_time,
+    get_or_create_user, approve_user, is_user_approved, get_user_token,
+)
 from bot.handlers.text import handle_text
-from bot.handlers.voice import handle_voice, handle_reply_to_voice
+from bot.handlers.voice import handle_voice, handle_reply_to_voice, handle_audio
 from bot.handlers.location import handle_location
-
-
-def _is_authorized(update: Update) -> bool:
-    message = update.message or update.edited_message
-    if not message:
-        return False
-    return message.chat_id == TELEGRAM_CHAT_ID
 
 
 def _check_rate_limit(chat_id: int) -> float | None:
@@ -38,12 +34,62 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not message:
         return
 
-    # Auth check
-    if not _is_authorized(update):
-        await message.reply_text("⛔ Access Denied")
+    chat_id = message.chat_id
+    username = message.from_user.username if message.from_user else None
+    conn = get_conn()
+
+    # Register user and auto-approve owner
+    user, is_new = get_or_create_user(conn, chat_id, username)
+    if chat_id == TELEGRAM_CHAT_ID and not user['approved']:
+        approve_user(conn, chat_id)
+        user['approved'] = 1
+
+    # If not approved, inform user and notify admin (only on first contact)
+    if not user['approved']:
+        if is_new:
+            await message.reply_text(
+                f"⏳ Запрос доступа отправлен администратору.\n"
+                f"Твой Chat ID: <code>{chat_id}</code>",
+                parse_mode="HTML"
+            )
+            try:
+                uname = f"@{username}" if username else "без username"
+                await context.bot.send_message(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    text=(
+                        f"👤 Новый пользователь запрашивает доступ:\n"
+                        f"Chat ID: <code>{chat_id}</code>\n"
+                        f"Username: {uname}\n\n"
+                        f"Одобри командой: /approve {chat_id}"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+        else:
+            await message.reply_text("⏳ Ожидай одобрения администратора.")
         return
 
-    chat_id = message.chat_id
+    # Allow certain actions before Google is connected
+    text = message.text or ""
+    pre_auth_commands = ('/connect', '/approve', '/start', '/help')
+    if any(text.startswith(cmd) for cmd in pre_auth_commands):
+        await handle_text(update, context)
+        return
+
+    # Also allow OAuth code paste (starts with "4/", no spaces, >20 chars)
+    stripped = text.strip()
+    if stripped.startswith('4/') and len(stripped) > 20 and ' ' not in stripped:
+        await handle_text(update, context)
+        return
+
+    # Require Google Calendar to be connected for all other actions
+    if not get_user_token(conn, chat_id):
+        await message.reply_text(
+            "⚠️ Google Calendar не подключён.\n"
+            "Используй /connect для подключения."
+        )
+        return
 
     # Rate limit
     wait_secs = _check_rate_limit(chat_id)
@@ -51,7 +97,7 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text(f"⏳ Подожди {wait_secs:.0f} сек. перед следующим запросом.")
         return
 
-    update_rate_limit(get_conn(), chat_id)
+    update_rate_limit(conn, chat_id)
 
     # Classify — order matters, more specific first
 
@@ -74,12 +120,17 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await handle_voice(update, context)
         return
 
-    # [3] Location pin
+    # [3] Audio file (from iOS Shortcuts)
+    if message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
+        await handle_audio(update, context)
+        return
+
+    # [4] Location pin
     if message.location:
         await handle_location(update, context)
         return
 
-    # [4] Unsupported
+    # [5] Unsupported
     await message.reply_text(
         "Этот тип сообщения не поддерживается. "
         "Отправь текст, голосовое сообщение или геолокацию."

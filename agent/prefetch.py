@@ -4,7 +4,7 @@ from services import google_calendar as gcal
 from services import google_tasks as gtasks
 
 
-def prefetch_context() -> dict[str, str]:
+def prefetch_context(chat_id: int) -> dict[str, str]:
     """
     Fetch today+tomorrow events and all active tasks before calling agent.
     Returns dict with 'today_events' and 'today_tasks' as JSON strings.
@@ -16,7 +16,7 @@ def prefetch_context() -> dict[str, str]:
     try:
         now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         two_days_later = now + timedelta(days=2)
-        events = gcal.list_events(now.isoformat(), two_days_later.isoformat(), single_events=True)
+        events = gcal.list_events(chat_id, now.isoformat(), two_days_later.isoformat(), single_events=True)
         simplified = []
         seen_ids: set[str] = set()
         for e in events:
@@ -37,7 +37,7 @@ def prefetch_context() -> dict[str, str]:
         today_events_str = f"ошибка загрузки: {e}"
 
     try:
-        tasks = gtasks.list_tasks()
+        tasks = gtasks.list_tasks(chat_id)
         simplified_tasks = []
         seen_task_ids: set[str] = set()
         for t in tasks:

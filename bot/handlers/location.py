@@ -21,10 +21,10 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     text_address = await reverse_geocode(lat, lon) or f"{lat:.4f}, {lon:.4f}"
     coords_str = f"{lat:.6f},{lon:.6f}"
 
-    # Save as pending location
+    # Save as pending location (per-user)
     conn = get_conn()
     pending = json.dumps({"coords": coords_str, "address": text_address}, ensure_ascii=False)
-    set_setting(conn, 'pending_location', pending)
+    set_setting(conn, chat_id, 'pending_location', pending)
 
     # Ask agent to handle (agent will ask user for name)
     user_input = (

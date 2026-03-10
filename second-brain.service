@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/second-brain-bot
-ExecStart=/home/ubuntu/.venv/bin/python main.py
+User=root
+WorkingDirectory=/root/second-brain-bot
+ExecStart=/root/second-brain-bot/.venv/bin/python main.py
 Restart=always
 RestartSec=10
-EnvironmentFile=/home/ubuntu/second-brain-bot/.env
+EnvironmentFile=/root/second-brain-bot/.env
 StandardOutput=journal
 StandardError=journal
 

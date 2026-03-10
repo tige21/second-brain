@@ -1,6 +1,9 @@
 import json
 from langchain_core.tools import tool
 from services import google_tasks as gtasks
+from db.database import get_conn
+from db.models import push_undo
+from agent.context import get_current_chat_id, get_current_session_id
 
 
 @tool
@@ -10,7 +13,8 @@ def get_tasks() -> str:
     Returns JSON array of tasks with id, title, due, notes, status fields.
     """
     try:
-        tasks = gtasks.list_tasks()
+        chat_id = get_current_chat_id()
+        tasks = gtasks.list_tasks(chat_id)
         result = []
         for t in tasks:
             result.append({
@@ -22,7 +26,7 @@ def get_tasks() -> str:
             })
         return json.dumps(result, ensure_ascii=False)
     except Exception as e:
-        return f"Ошибка при получении задач: {e}"
+        return f"❌ Ошибка при получении задач: {e}"
 
 
 @tool
@@ -43,10 +47,12 @@ def create_task(
     IMPORTANT: always set due date. Never omit it.
     """
     try:
-        task = gtasks.create_task(title, due, notes, parent_id)
+        chat_id = get_current_chat_id()
+        task = gtasks.create_task(chat_id, title, due, notes, parent_id)
+        push_undo(get_conn(), chat_id, 'create_task', task['id'], task['title'], get_current_session_id())
         return f"✅ Задача создана: {task['title']} (id: {task['id']}, due: {task.get('due', 'не задано')})"
     except Exception as e:
-        return f"Ошибка при создании задачи: {e}"
+        return f"❌ Ошибка при создании задачи: {e}"
 
 
 @tool
@@ -65,6 +71,7 @@ def update_task(
     Examples: "добавь срок на пятницу", "поменяй название", "отметь выполненной".
     """
     try:
+        chat_id = get_current_chat_id()
         fields = {}
         if title:
             fields['title'] = title
@@ -74,17 +81,39 @@ def update_task(
             fields['notes'] = notes
         if status:
             fields['status'] = status
-        task = gtasks.update_task(task_id, **fields)
+        if not fields:
+            return "❌ Не указано ни одного поля для обновления задачи."
+        task = gtasks.update_task(chat_id, task_id, **fields)
         return f"✅ Задача обновлена: {task.get('title')} (id: {task_id})"
     except Exception as e:
-        return f"Ошибка при обновлении задачи: {e}"
+        return f"❌ Ошибка при обновлении задачи: {e}"
+
+
+@tool
+def complete_task(task_id: str) -> str:
+    """
+    Mark a Google Task as completed (done).
+    Use when user says: "выполнил", "сделал", "готово", "отметь выполненной", "зачеркни".
+    Keeps the task in Google Tasks history (unlike delete which removes it entirely).
+    """
+    try:
+        chat_id = get_current_chat_id()
+        task = gtasks.complete_task(chat_id, task_id)
+        push_undo(get_conn(), chat_id, 'complete_task', task_id, task.get('title', task_id), get_current_session_id())
+        return f"✅ Задача выполнена: {task.get('title')} (id: {task_id})"
+    except Exception as e:
+        return f"❌ Ошибка при выполнении задачи: {e}"
 
 
 @tool
 def delete_task(task_id: str) -> str:
-    """Delete a Google Task by task_id."""
+    """
+    Delete a Google Task by task_id. Use only when user explicitly says 'удали задачу'.
+    For 'выполнил'/'сделал'/'готово' — use complete_task instead.
+    """
     try:
-        gtasks.delete_task(task_id)
+        chat_id = get_current_chat_id()
+        gtasks.delete_task(chat_id, task_id)
         return f"✅ Задача удалена (id: {task_id})"
     except Exception as e:
-        return f"Ошибка при удалении задачи: {e}"
+        return f"❌ Ошибка при удалении задачи: {e}"

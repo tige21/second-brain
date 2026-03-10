@@ -6,13 +6,13 @@ from services.google_auth import get_credentials
 from config import GOOGLE_CALENDAR_ID
 
 
-def _service():
-    return build('calendar', 'v3', credentials=get_credentials())
+def _service(chat_id: int):
+    return build('calendar', 'v3', credentials=get_credentials(chat_id))
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def list_events(time_min: str, time_max: str, single_events: bool = True) -> list[dict]:
-    result = _service().events().list(
+def list_events(chat_id: int, time_min: str, time_max: str, single_events: bool = True) -> list[dict]:
+    result = _service(chat_id).events().list(
         calendarId=GOOGLE_CALENDAR_ID,
         timeMin=time_min,
         timeMax=time_max,
@@ -25,6 +25,7 @@ def list_events(time_min: str, time_max: str, single_events: bool = True) -> lis
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
 def create_event(
+    chat_id: int,
     summary: str,
     start_utc: str,
     end_utc: str,
@@ -46,66 +47,94 @@ def create_event(
             f"RRULE:{r}" if not r.startswith("RRULE:") else r
             for r in recurrence
         ]
-    return _service().events().insert(calendarId=GOOGLE_CALENDAR_ID, body=body).execute()
+    return _service(chat_id).events().insert(calendarId=GOOGLE_CALENDAR_ID, body=body).execute()
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def update_event(event_id: str, **fields) -> dict:
-    svc = _service()
+def update_event(chat_id: int, event_id: str, **fields) -> dict:
+    svc = _service(chat_id)
     event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
+
+    # Recurrence can only be updated on the parent event, not on instances.
+    # If this is an instance (has recurringEventId) and we're changing recurrence,
+    # automatically redirect to the parent event.
+    if 'recurrence' in fields and event.get('recurringEventId'):
+        parent_id = event['recurringEventId']
+        event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=parent_id).execute()
+        event_id = parent_id
+
     for key, value in fields.items():
         if key in ('start', 'end') and isinstance(value, str):
             event[key] = {'dateTime': value, 'timeZone': 'UTC'}
+        elif key == 'recurrence':
+            if isinstance(value, str):
+                value = [value]
+            event[key] = [
+                f"RRULE:{r}" if not r.startswith("RRULE:") else r
+                for r in value
+            ]
         else:
             event[key] = value
+
     return svc.events().update(
         calendarId=GOOGLE_CALENDAR_ID, eventId=event_id, body=event
     ).execute()
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def delete_event(event_id: str) -> None:
-    _service().events().delete(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
+def delete_event(chat_id: int, event_id: str) -> None:
+    _service(chat_id).events().delete(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
 
 
-def delete_this_and_following(instance_id: str) -> dict:
+def delete_event_or_series(chat_id: int, event_id: str) -> str:
+    """
+    Delete a single event or an entire recurring series.
+    If event_id is a recurring instance (contains '_'), resolves to the parent
+    recurringEventId and deletes the whole series.
+    Returns the ID that was actually deleted.
+    """
+    svc = _service(chat_id)
+    target_id = event_id
+    if '_' in event_id:
+        event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
+        parent_id = event.get('recurringEventId')
+        if parent_id:
+            target_id = parent_id
+    svc.events().delete(calendarId=GOOGLE_CALENDAR_ID, eventId=target_id).execute()
+    return target_id
+
+
+def delete_this_and_following(chat_id: int, instance_id: str) -> dict:
     """
     Delete this and all following occurrences of a recurring event.
     Works by updating the parent event's RRULE to set UNTIL = day before this instance.
-    instance_id: the ID of the specific recurring event instance (contains underscore).
-    Returns the updated parent event.
     """
-    svc = _service()
+    svc = _service(chat_id)
 
-    # Get the instance to find its start date and parent event ID
     instance = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=instance_id).execute()
     recurring_event_id = instance.get('recurringEventId')
     if not recurring_event_id:
-        # Not a recurring instance — just delete it
         svc.events().delete(calendarId=GOOGLE_CALENDAR_ID, eventId=instance_id).execute()
         return {"status": "deleted single event"}
 
-    # Get the instance start date
     start = instance.get('start', {})
     start_str = start.get('dateTime') or start.get('date', '')
-    if 'T' in start_str:
-        instance_date = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-    else:
+    is_all_day = 'T' not in start_str
+    if is_all_day:
+        # All-day event: UNTIL must be a DATE (RFC 5545 §3.3.10)
         instance_date = datetime.strptime(start_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        until_str = (instance_date - timedelta(days=1)).strftime('%Y%m%d')
+    else:
+        instance_date = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+        until_str = (instance_date - timedelta(seconds=1)).strftime('%Y%m%dT%H%M%SZ')
 
-    # UNTIL must be the day before this instance, in UTC format YYYYMMDDTHHMMSSZ
-    until_dt = instance_date - timedelta(seconds=1)
-    until_str = until_dt.strftime('%Y%m%dT%H%M%SZ')
-
-    # Get parent event and modify its RRULE
     parent = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=recurring_event_id).execute()
     recurrence = parent.get('recurrence', [])
 
     updated_recurrence = []
     for rule in recurrence:
         if rule.startswith('RRULE:'):
-            # Remove existing UNTIL/COUNT and add new UNTIL
-            rule_body = rule[6:]  # strip "RRULE:"
+            rule_body = rule[6:]
             rule_body = re.sub(r';?UNTIL=[^;]+', '', rule_body)
             rule_body = re.sub(r';?COUNT=\d+', '', rule_body)
             rule_body = rule_body.strip(';')
@@ -116,6 +145,76 @@ def delete_this_and_following(instance_id: str) -> dict:
     return svc.events().update(
         calendarId=GOOGLE_CALENDAR_ID, eventId=recurring_event_id, body=parent
     ).execute()
+
+
+def delete_single_occurrence(chat_id: int, instance_id: str) -> dict:
+    """
+    Delete only one occurrence of a recurring event.
+    Calling delete() on an instance_id creates a 'cancelled' exception
+    for that date only — all other occurrences remain untouched.
+    Returns the event dict (for summary/undo) before deleting.
+    """
+    svc = _service(chat_id)
+    event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=instance_id).execute()
+    svc.events().delete(calendarId=GOOGLE_CALENDAR_ID, eventId=instance_id).execute()
+    return event
+
+
+def restore_occurrence(chat_id: int, instance_id: str) -> None:
+    """
+    Restore a previously cancelled recurring event instance.
+    Patches the instance status back to 'confirmed'.
+    """
+    _service(chat_id).events().patch(
+        calendarId=GOOGLE_CALENDAR_ID,
+        eventId=instance_id,
+        body={'status': 'confirmed'},
+    ).execute()
+
+
+def exclude_weekday_from_recurrence(chat_id: int, event_id: str, weekday: str) -> dict:
+    """
+    Permanently remove a weekday from a recurring event's RRULE.
+    weekday: two-letter code MO|TU|WE|TH|FR|SA|SU.
+    Works with any event_id — resolves to parent automatically.
+    Handles FREQ=DAILY by converting to FREQ=WEEKLY with all days except the excluded one.
+    """
+    all_days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+    svc = _service(chat_id)
+
+    # Resolve to parent event
+    event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
+    parent_id = event.get('recurringEventId') or event_id
+    if parent_id != event_id:
+        event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=parent_id).execute()
+
+    recurrence = event.get('recurrence', [])
+    new_recurrence = []
+    for rule in recurrence:
+        if not rule.startswith('RRULE:'):
+            new_recurrence.append(rule)
+            continue
+
+        parts = dict(p.split('=', 1) for p in rule[6:].split(';') if '=' in p)
+        freq = parts.get('FREQ', '')
+        byday = parts.get('BYDAY', '')
+
+        if freq == 'DAILY':
+            # Convert DAILY → WEEKLY with all days except the excluded one
+            days = [d for d in all_days if d != weekday]
+            parts['FREQ'] = 'WEEKLY'
+            parts['BYDAY'] = ','.join(days)
+        elif freq == 'WEEKLY' and byday:
+            current_days = [d.strip() for d in byday.split(',')]
+            days = [d for d in current_days if d != weekday]
+            if not days:
+                raise ValueError(f"Cannot remove {weekday}: it is the only day in the schedule")
+            parts['BYDAY'] = ','.join(days)
+
+        new_recurrence.append('RRULE:' + ';'.join(f'{k}={v}' for k, v in parts.items()))
+
+    event['recurrence'] = new_recurrence
+    return svc.events().update(calendarId=GOOGLE_CALENDAR_ID, eventId=parent_id, body=event).execute()
 
 
 def get_today_range() -> tuple[str, str]:
