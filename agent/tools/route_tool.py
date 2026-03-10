@@ -1,13 +1,14 @@
 import sqlite3
 from langchain_core.tools import tool
 from services.osrm import calculate_route as _osrm_route
+from services.yandex_geocoder import geocode_address
 from db.database import get_conn
 from db.models import get_setting, get_address
+from agent.context import get_current_chat_id
 
 
-def _resolve_to_coords(value: str, conn: sqlite3.Connection) -> str | None:
-    """Resolve address name or 'lat,lon' string to normalised 'lat,lon'."""
-    # Already coordinates?
+def _resolve_coords_from_db(value: str, conn: sqlite3.Connection, chat_id: int) -> str | None:
+    """Check address book and raw coords. Returns 'lat,lon' or None."""
     parts = value.replace(' ', '').split(',')
     if len(parts) == 2:
         try:
@@ -16,16 +17,20 @@ def _resolve_to_coords(value: str, conn: sqlite3.Connection) -> str | None:
             return value.replace(' ', '')
         except ValueError:
             pass
-    # Named address in address book?
-    addr = get_address(conn, value.lower())
+    addr = get_address(conn, chat_id, value.lower())
     if addr:
         return addr['coords']
-    # Active address fallback
-    active_name = get_setting(conn, 'active_address')
-    if active_name:
-        active = get_address(conn, active_name)
-        if active:
-            return active['coords']
+    return None
+
+
+async def _resolve_to_coords(value: str, conn: sqlite3.Connection, chat_id: int) -> str | None:
+    """Resolve address to 'lat,lon': address book → Nominatim geocoding."""
+    coords = _resolve_coords_from_db(value, conn, chat_id)
+    if coords:
+        return coords
+    geo = await geocode_address(value)
+    if geo:
+        return f"{geo['lat']},{geo['lon']}"
     return None
 
 
@@ -44,18 +49,19 @@ async def calculate_route(
     """
     try:
         conn = get_conn()
-        origin_coords = _resolve_to_coords(origin, conn)
-        dest_coords = _resolve_to_coords(destination, conn)
+        chat_id = get_current_chat_id()
+        origin_coords = await _resolve_to_coords(origin, conn, chat_id)
+        dest_coords = await _resolve_to_coords(destination, conn, chat_id)
 
         if not origin_coords:
-            return f"Не удалось определить координаты для '{origin}'. Добавь адрес в адресную книгу."
+            return f"Не удалось определить координаты для адреса '{origin}'. Попробуй указать полный адрес с городом."
         if not dest_coords:
-            return f"Не удалось определить координаты для '{destination}'."
+            return f"Не удалось определить координаты для адреса '{destination}'. Попробуй указать полный адрес с городом."
 
         result = await _osrm_route(origin_coords, dest_coords, mode)
 
         if "error" in result:
-            return f"Ошибка маршрута ({mode}): {result['error']}"
+            return f"❌ Ошибка маршрута ({mode}): {result['error']}"
 
         duration: int = result['duration_minutes']
         distance: float = result['distance_km']
@@ -76,4 +82,4 @@ async def calculate_route(
 
         return f"{indicator} {mode_label}: {duration} мин, {distance} км"
     except Exception as e:
-        return f"Ошибка при расчёте маршрута: {e}"
+        return f"❌ Ошибка при расчёте маршрута: {e}"

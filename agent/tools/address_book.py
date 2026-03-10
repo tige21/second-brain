@@ -5,6 +5,7 @@ from db.models import (
     save_address, get_address, list_addresses, delete_address,
     set_setting, get_setting,
 )
+from agent.context import get_current_chat_id
 
 
 @tool
@@ -28,28 +29,29 @@ def address_book(operation: str, name: str = None, address: str = None, coords: 
     - address_book(operation="delete", name="старый офис")
     """
     conn = get_conn()
+    chat_id = get_current_chat_id()
 
     if operation == "save":
         if not name or not address or not coords:
             return "Ошибка: укажи name, address и coords для операции save"
-        save_address(conn, name.lower(), address, coords)
+        save_address(conn, chat_id, name.lower(), address, coords)
         return f"✅ Адрес '{name}' сохранён: {address}"
 
     elif operation == "save_pending":
         if not name:
             return "Ошибка: укажи name для операции save_pending"
-        pending_json = get_setting(conn, 'pending_location')
+        pending_json = get_setting(conn, chat_id, 'pending_location')
         if not pending_json:
             return "Нет ожидающей геолокации. Сначала отправь GPS-точку."
         pending = json.loads(pending_json)
-        save_address(conn, name.lower(), pending.get('address', 'неизвестно'), pending['coords'])
-        set_setting(conn, 'active_address', name.lower())
-        set_setting(conn, 'pending_location', '')
+        save_address(conn, chat_id, name.lower(), pending.get('address', 'неизвестно'), pending['coords'])
+        set_setting(conn, chat_id, 'active_address', name.lower())
+        set_setting(conn, chat_id, 'pending_location', '')
         return f"✅ Геолокация сохранена как '{name}': {pending.get('address', pending['coords'])}"
 
     elif operation == "list":
-        addresses = list_addresses(conn)
-        active = get_setting(conn, 'active_address') or 'не задан'
+        addresses = list_addresses(conn, chat_id)
+        active = get_setting(conn, chat_id, 'active_address') or 'не задан'
         if not addresses:
             return "Адресная книга пуста. Отправь GPS-точку или используй 'save'."
         lines = [f"📍 Адресная книга (активный: {active}):"]
@@ -61,29 +63,29 @@ def address_book(operation: str, name: str = None, address: str = None, coords: 
     elif operation == "switch":
         if not name:
             return "Ошибка: укажи name для операции switch"
-        addr = get_address(conn, name.lower())
+        addr = get_address(conn, chat_id, name.lower())
         if not addr:
-            all_names = ', '.join(a['name'] for a in list_addresses(conn))
+            all_names = ', '.join(a['name'] for a in list_addresses(conn, chat_id))
             return f"Адрес '{name}' не найден. Доступные: {all_names or 'нет'}"
-        set_setting(conn, 'active_address', name.lower())
+        set_setting(conn, chat_id, 'active_address', name.lower())
         return f"✅ Активный адрес: {name} ({addr['address']})"
 
     elif operation == "delete":
         if not name:
             return "Ошибка: укажи name для операции delete"
-        if not get_address(conn, name.lower()):
+        if not get_address(conn, chat_id, name.lower()):
             return f"Адрес '{name}' не найден"
-        delete_address(conn, name.lower())
-        active = get_setting(conn, 'active_address')
+        delete_address(conn, chat_id, name.lower())
+        active = get_setting(conn, chat_id, 'active_address')
         if active == name.lower():
-            set_setting(conn, 'active_address', '')
+            set_setting(conn, chat_id, 'active_address', '')
         return f"✅ Адрес '{name}' удалён"
 
     elif operation == "get_active":
-        active_name = get_setting(conn, 'active_address')
+        active_name = get_setting(conn, chat_id, 'active_address')
         if not active_name:
             return "Активный адрес не задан"
-        addr = get_address(conn, active_name)
+        addr = get_address(conn, chat_id, active_name)
         if not addr:
             return "Активный адрес не найден в книге"
         return json.dumps(

@@ -6,30 +6,38 @@ from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
-from config import OPENAI_API_KEY, OPENAI_MODEL, TIMEZONE_OFFSET
+from config import OPENAI_API_KEY, OPENAI_MODEL, TIMEZONE_OFFSET, OPENAI_PROXY_URL
 from db.database import get_conn
 from db.models import load_memory, save_memory, get_setting, get_address, list_addresses
 from agent.system_prompt import build_system_prompt
 from agent.prefetch import prefetch_context
-from agent.tools.calendar_tool import get_calendar_events, create_calendar_event, update_calendar_event, delete_future_occurrences
-from agent.tools.tasks_tool import get_tasks, create_task, update_task, delete_task
-from agent.tools.batch_delete import batch_delete_events
+from agent.context import set_current_chat_id, set_current_session_id, _chat_id_var, _session_id_var
+from agent.tools.calendar_tool import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, delete_future_occurrences, delete_single_occurrence, exclude_recurring_weekday
+from agent.tools.tasks_tool import get_tasks, create_task, update_task, complete_task, delete_task
+from agent.tools.batch_delete import batch_delete_events, deduplicate_recurring_events
 from agent.tools.route_tool import calculate_route
 from agent.tools.address_book import address_book
+from agent.tools.reminder_tool import set_reminder
 from agent.tools.think import think
 
 TOOLS = [
     get_calendar_events,
     create_calendar_event,
     update_calendar_event,
+    delete_calendar_event,
     delete_future_occurrences,
+    delete_single_occurrence,
+    exclude_recurring_weekday,
     batch_delete_events,
+    deduplicate_recurring_events,
     get_tasks,
     create_task,
     update_task,
+    complete_task,
     delete_task,
     calculate_route,
     address_book,
+    set_reminder,
     think,
 ]
 
@@ -71,7 +79,7 @@ def _load_langchain_history(chat_id: int) -> list[BaseMessage]:
     return messages
 
 
-def _save_to_memory(chat_id: int, user_msg: str, assistant_msg: str, window: int = 3) -> None:
+def _save_to_memory(chat_id: int, user_msg: str, assistant_msg: str, window: int = 6) -> None:
     conn = get_conn()
     current = load_memory(conn, chat_id)
     current.append({"role": "user", "content": user_msg})
@@ -80,18 +88,18 @@ def _save_to_memory(chat_id: int, user_msg: str, assistant_msg: str, window: int
     save_memory(conn, chat_id, trimmed)
 
 
-def _get_address_context(conn: sqlite3.Connection) -> dict[str, str]:
-    active_name = get_setting(conn, 'active_address') or ''
-    active_addr = get_address(conn, active_name) if active_name else None
+def _get_address_context(conn: sqlite3.Connection, chat_id: int) -> dict[str, str]:
+    active_name = get_setting(conn, chat_id, 'active_address') or ''
+    active_addr = get_address(conn, chat_id, active_name) if active_name else None
     active_str = f"{active_name}: {active_addr['address']}" if active_addr else "не задан"
 
-    all_addrs = list_addresses(conn)
+    all_addrs = list_addresses(conn, chat_id)
     saved_str = json.dumps(
         {a['name']: a['address'] for a in all_addrs},
         ensure_ascii=False
     ) if all_addrs else "{}"
 
-    pending_json = get_setting(conn, 'pending_location') or ''
+    pending_json = get_setting(conn, chat_id, 'pending_location') or ''
     pending_str = "нет"
     if pending_json:
         try:
@@ -109,27 +117,36 @@ def _get_address_context(conn: sqlite3.Connection) -> dict[str, str]:
 
 async def run_agent(chat_id: int, user_message: str) -> str:
     """Run the AI agent for a given message. Returns response text."""
-    conn = get_conn()
-    # Run sync Google API calls in a thread to avoid blocking the event loop
-    context = await asyncio.to_thread(prefetch_context)
-    addr_ctx = _get_address_context(conn)
-    tz_offset = int(get_setting(conn, 'timezone_offset') or TIMEZONE_OFFSET)
+    import uuid
+    session_id = uuid.uuid4().hex
 
-    system_message = build_system_prompt(
-        today_events=context['today_events'],
-        today_tasks=context['today_tasks'],
-        timezone_offset=tz_offset,
-        **addr_ctx,
-    )
+    token_chat = set_current_chat_id(chat_id)
+    token_session = set_current_session_id(session_id)
 
-    chat_history = _load_langchain_history(chat_id)
+    try:
+        conn = get_conn()
+        context = await asyncio.to_thread(prefetch_context, chat_id)
+        addr_ctx = _get_address_context(conn, chat_id)
+        tz_offset = int(get_setting(conn, chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
 
-    result = await _executor.ainvoke({
-        "input": user_message,
-        "system_message": system_message,
-        "chat_history": chat_history,
-    })
+        system_message = build_system_prompt(
+            today_events=context['today_events'],
+            today_tasks=context['today_tasks'],
+            timezone_offset=tz_offset,
+            **addr_ctx,
+        )
 
-    response = result.get("output", "Нет ответа")
-    _save_to_memory(chat_id, user_message, response)
-    return response
+        chat_history = _load_langchain_history(chat_id)
+
+        result = await _executor.ainvoke({
+            "input": user_message,
+            "system_message": system_message,
+            "chat_history": chat_history,
+        })
+
+        response = result.get("output", "Нет ответа")
+        _save_to_memory(chat_id, user_message, response)
+        return response
+    finally:
+        _chat_id_var.reset(token_chat)
+        _session_id_var.reset(token_session)
