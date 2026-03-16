@@ -14,6 +14,96 @@ from services import google_tasks as gtasks
 from services.google_auth import get_auth_url
 
 
+_MONTHS_RU = ['','января','февраля','марта','апреля','мая','июня',
+              'июля','августа','сентября','октября','ноября','декабря']
+_DAYS_RU = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
+
+
+def _schedule_lines(
+    events: list,
+    tasks: list,
+    tz_offset: int,
+    start_date: date_type,
+    end_date: date_type,
+    show_overdue: bool = True,
+) -> list[str]:
+    """Build combined events+tasks lines grouped by day (variant B: tasks indented under events)."""
+    # Group events by local date
+    events_by_date: dict[date_type, list[tuple]] = {}
+    for e in events:
+        dt_str = e.get('start', {}).get('dateTime') or e.get('start', {}).get('date', '')
+        if 'T' in dt_str:
+            dt_utc = datetime.fromisoformat(dt_str.replace('Z', '+00:00')).astimezone(timezone.utc)
+            dt_local = dt_utc + timedelta(hours=tz_offset)
+            day = dt_local.date()
+            time_str = dt_local.strftime('%H:%M')
+        elif dt_str:
+            day = date_type.fromisoformat(dt_str)
+            time_str = "весь день"
+        else:
+            continue
+        if start_date <= day <= end_date:
+            events_by_date.setdefault(day, []).append((time_str, e))
+
+    # Group tasks by due date
+    tasks_by_date: dict[date_type, list] = {}
+    tasks_overdue: list = []
+    tasks_no_date: list = []
+    for t in tasks:
+        due = t.get('due', '')
+        if not due:
+            tasks_no_date.append(t)
+        else:
+            due_date = date_type.fromisoformat(due[:10])
+            if due_date < start_date:
+                tasks_overdue.append(t)
+            elif due_date <= end_date:
+                tasks_by_date.setdefault(due_date, []).append(t)
+
+    lines: list[str] = []
+
+    # Overdue block at top
+    if show_overdue and tasks_overdue:
+        lines.append("⚠️ <b>Просрочено:</b>")
+        for t in tasks_overdue:
+            lines.append(f"  📋 {t.get('title', '')}")
+        lines.append("")
+
+    # Day sections
+    current = start_date
+    while current <= end_date:
+        day_events = events_by_date.get(current, [])
+        day_tasks = tasks_by_date.get(current, [])
+        if not day_events and not day_tasks:
+            current += timedelta(days=1)
+            continue
+
+        day_label = f"{_DAYS_RU[current.weekday()]}, {current.day} {_MONTHS_RU[current.month]}"
+        lines.append(f"<b>{day_label}</b>")
+
+        for time_str, e in day_events:
+            summary = e.get('summary', 'Без названия')
+            loc = f" 📍{e['location']}" if e.get('location') else ""
+            lines.append(f"⏰ <b>{time_str}</b>  {summary}{loc}")
+
+        if day_tasks:
+            if day_events:
+                lines.append("")
+            for t in day_tasks:
+                lines.append(f"  📋 {t.get('title', '')}")
+
+        lines.append("")
+        current += timedelta(days=1)
+
+    # No-date block at bottom
+    if tasks_no_date:
+        lines.append("📋 <b>Без срока:</b>")
+        for t in tasks_no_date:
+            lines.append(f"  📋 {t.get('title', '')}")
+
+    return lines
+
+
 def _is_auth_code(text: str) -> bool:
     """Detect Google OAuth authorization code (starts with '4/', no spaces, long)."""
     text = text.strip()
@@ -131,44 +221,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         try:
             conn = get_conn()
             tz_offset = int(get_setting(conn, chat_id, 'timezone_offset') or 3)
-            now = datetime.now(timezone.utc)
-            week_end = now + timedelta(days=7)
-            events = gcal.list_events(chat_id, now.isoformat(), week_end.isoformat(), single_events=True)
+            now_utc = datetime.now(timezone.utc)
+            local_now = now_utc + timedelta(hours=tz_offset)
+            today = local_now.date()
+            week_end_date = today + timedelta(days=6)
+            week_end_utc = now_utc + timedelta(days=7)
 
-            months_ru = ['','января','февраля','марта','апреля','мая','июня',
-                         'июля','августа','сентября','октября','ноября','декабря']
-            days_ru = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
+            events = gcal.list_events(chat_id, now_utc.isoformat(), week_end_utc.isoformat(), single_events=True)
+            tasks = gtasks.list_tasks(chat_id)
 
-            if not events:
-                await message.reply_text("📅 На ближайшие 7 дней событий нет.")
+            body = _schedule_lines(events, tasks, tz_offset, today, week_end_date, show_overdue=True)
+            if not body:
+                await message.reply_text("📅 На ближайшие 7 дней ничего нет.")
                 return
 
-            lines = ["📅 <b>События на неделю:</b>\n"]
-            current_date = None
-            for e in events:
-                start = e.get('start', {})
-                dt_str = start.get('dateTime') or start.get('date', '')
-                if 'T' in dt_str:
-                    dt_utc = datetime.fromisoformat(dt_str.replace('Z', '+00:00')).astimezone(timezone.utc)
-                    dt_local = dt_utc + timedelta(hours=tz_offset)
-                    date_key = dt_local.date()
-                    time_str = dt_local.strftime('%H:%M')
-                else:
-                    date_key = date_type.fromisoformat(dt_str)
-                    time_str = "весь день"
-
-                if date_key != current_date:
-                    current_date = date_key
-                    day_name = days_ru[date_key.weekday()]
-                    lines.append(f"\n<b>{day_name}, {date_key.day} {months_ru[date_key.month]}</b>")
-
-                summary = e.get('summary', 'Без названия')
-                loc = f" 📍{e['location']}" if e.get('location') else ""
-                lines.append(f"  • {time_str} — {summary}{loc}")
-
-            await message.reply_text("\n".join(lines), parse_mode="HTML")
+            if today.month == week_end_date.month:
+                range_str = f"{today.day} — {week_end_date.day} {_MONTHS_RU[week_end_date.month]}"
+            else:
+                range_str = f"{today.day} {_MONTHS_RU[today.month]} — {week_end_date.day} {_MONTHS_RU[week_end_date.month]}"
+            header = f"📅 <b>{range_str}:</b>\n"
+            await message.reply_text(header + "\n".join(body), parse_mode="HTML")
         except Exception as ex:
-            await message.reply_text(f"⚠️ Ошибка при загрузке событий: {ex}")
+            await message.reply_text(f"⚠️ Ошибка при загрузке: {ex}")
         return
 
     if text.startswith('/undo'):
@@ -317,29 +391,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             now_utc = datetime.now(timezone.utc)
             local_now = now_utc + timedelta(hours=tz_offset)
             local_tomorrow = (local_now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            tmrw_date = local_tomorrow.date()
             tmrw_start = local_tomorrow - timedelta(hours=tz_offset)
             tmrw_end = tmrw_start + timedelta(days=1)
+
             events = gcal.list_events(chat_id, tmrw_start.isoformat(), tmrw_end.isoformat(), single_events=True)
-            months_ru = ['','января','февраля','марта','апреля','мая','июня',
-                         'июля','августа','сентября','октября','ноября','декабря']
-            date_str = f"{local_tomorrow.day} {months_ru[local_tomorrow.month]}"
-            if not events:
-                await message.reply_text(f"📅 Завтра ({date_str}) событий нет.")
+            tasks = gtasks.list_tasks(chat_id)
+
+            date_str = f"{local_tomorrow.day} {_MONTHS_RU[local_tomorrow.month]}"
+            body = _schedule_lines(events, tasks, tz_offset, tmrw_date, tmrw_date, show_overdue=False)
+            if not body:
+                await message.reply_text(f"📅 Завтра ({date_str}) ничего нет.")
                 return
-            lines = [f"📅 <b>Завтра, {date_str}:</b>\n"]
-            for e in events:
-                start = e.get('start', {})
-                dt_str = start.get('dateTime') or start.get('date', '')
-                if 'T' in dt_str:
-                    dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00')).astimezone(timezone.utc)
-                    time_str = (dt + timedelta(hours=tz_offset)).strftime('%H:%M')
-                    time_part = f"⏰ <b>{time_str}</b>"
-                else:
-                    time_part = "📅 <b>весь день</b>"
-                summary = e.get('summary', 'Без названия')
-                loc = f" 📍{e['location']}" if e.get('location') else ""
-                lines.append(f"{time_part}  {summary}{loc}")
-            await message.reply_text("\n".join(lines), parse_mode="HTML")
+
+            header = f"📅 <b>Завтра, {date_str}:</b>\n"
+            await message.reply_text(header + "\n".join(body), parse_mode="HTML")
         except Exception as ex:
             await message.reply_text(f"⚠️ Ошибка: {ex}")
         return
