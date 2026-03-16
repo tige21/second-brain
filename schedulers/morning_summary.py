@@ -60,20 +60,21 @@ async def _send_for_user(bot, chat_id: int) -> None:
                 start.get('dateTime') or start.get('date', ''), tz_offset
             )
             summary = e.get('summary', 'Без названия')
-            lines.append(f"• {time_str} — {summary}")
+            lines.append(f"⏰ <b>{time_str}</b>  {summary}")
     else:
         lines.append("🗓 Событий нет")
 
     lines.append("")
 
     if tasks_today or tasks_no_due:
-        lines.append("✅ <b>Задачи:</b>")
+        lines.append("📋 <b>Задачи:</b>")
         for t in tasks_today:
-            lines.append(f"• {t.get('title', '')}")
+            lines.append(f"☐ {t.get('title', '')}")
         if tasks_no_due:
-            lines.append("  <i>без срока:</i>")
+            lines.append("")
+            lines.append("<i>Без срока:</i>")
             for t in tasks_no_due:
-                lines.append(f"• {t.get('title', '')}")
+                lines.append(f"☐ {t.get('title', '')}")
     else:
         lines.append("✅ Задач на сегодня нет")
 

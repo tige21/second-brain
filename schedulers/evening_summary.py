@@ -50,22 +50,22 @@ async def _send_for_user(bot, chat_id: int) -> None:
                 time_str = (dt + timedelta(hours=tz_offset)).strftime('%H:%M')
             else:
                 time_str = "весь день"
-            lines.append(f"  • {time_str} — {e.get('summary', 'Без названия')}")
+            lines.append(f"⏰ <b>{time_str}</b>  {e.get('summary', 'Без названия')}")
     else:
-        lines.append("  Событий нет")
+        lines.append("Событий нет")
 
     lines.append("")
 
     if pending:
         lines.append("⏳ <b>Не сделано сегодня:</b>")
         for t in pending:
-            lines.append(f"  • {t.get('title', '')}")
+            lines.append(f"☐ {t.get('title', '')}")
     else:
         lines.append("✅ Все задачи на сегодня выполнены!")
 
     if completed:
         lines.append("")
-        lines.append(f"✅ <b>Выполнено:</b> {len(completed)} задач")
+        lines.append(f"✅ <b>Выполнено сегодня:</b> {len(completed)}")
 
     await bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
 
