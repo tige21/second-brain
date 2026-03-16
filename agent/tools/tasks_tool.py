@@ -4,8 +4,10 @@ from langchain_core.tools import tool
 from services import google_tasks as gtasks
 from services.google_auth import GoogleAuthExpiredError
 from db.database import get_conn
-from db.models import push_undo, add_event_task_link
+from db.models import push_undo, add_event_task_link, get_setting
 from agent.context import get_current_chat_id, get_current_session_id
+from agent.tools.calendar_tool import _to_utc
+from config import TIMEZONE_OFFSET
 
 _AUTH_ERROR_MSG = "❌ Авторизация Google истекла. Отправь /connect для повторной авторизации."
 
@@ -149,14 +151,17 @@ def create_task_for_event(
     create_task_for_event instead to ensure the notification link is stored.
     event_id: calendar event ID (get via get_calendar_events if not known).
     event_summary: event title (from get_calendar_events or conversation context).
-    event_start_utc: event start datetime in ISO 8601 UTC, e.g. "2026-03-18T09:50:00Z".
+    event_start_utc: event start in LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T09:50:00".
+      Conversion to UTC is done automatically. Do NOT subtract the timezone offset yourself.
     title: task title (use user's exact words).
     notes: optional extra description.
     The user will receive a Telegram reminder ~4 hours before the event.
     """
     try:
         chat_id = get_current_chat_id()
-        due = event_start_utc[:10] + "T00:00:00Z"
+        tz_offset = int(get_setting(get_conn(), chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
+        event_start_utc_normalized = _to_utc(event_start_utc, tz_offset)
+        due = event_start_utc_normalized[:10] + "T00:00:00Z"
         task = gtasks.create_task(chat_id, title, due, notes)
         try:
             conn = get_conn()
@@ -166,7 +171,7 @@ def create_task_for_event(
                 event_id=event_id,
                 task_id=task['id'],
                 event_summary=event_summary,
-                event_start_utc=event_start_utc,
+                event_start_utc=event_start_utc_normalized,
                 task_title=title,
             )
             push_undo(conn, chat_id, 'create_task', task['id'], title, get_current_session_id())
