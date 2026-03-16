@@ -276,11 +276,12 @@ def add_event_task_link(
     event_start_utc: str,
     task_title: str,
 ) -> None:
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "INSERT INTO event_task_links "
-        "(chat_id, event_id, task_id, event_summary, event_start_utc, task_title) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (chat_id, event_id, task_id, event_summary, event_start_utc, task_title),
+        "(chat_id, event_id, task_id, event_summary, event_start_utc, task_title, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (chat_id, event_id, task_id, event_summary, event_start_utc, task_title, now),
     )
     conn.commit()
 
@@ -311,7 +312,7 @@ def mark_event_task_links_notified(conn: sqlite3.Connection, ids: list[int]) -> 
 
 
 def cleanup_old_event_task_links(conn: sqlite3.Connection, days: int = 7) -> None:
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     conn.execute(
         "DELETE FROM event_task_links WHERE notified = 1 AND created_at < ?",
         (cutoff,),
