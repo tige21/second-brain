@@ -159,12 +159,28 @@ def create_task_for_event(
     """
     try:
         chat_id = get_current_chat_id()
-        tz_offset = int(get_setting(get_conn(), chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
+        conn = get_conn()
+        tz_offset = int(get_setting(conn, chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
         event_start_utc_normalized = _to_utc(event_start_utc, tz_offset)
         due = event_start_utc_normalized[:10] + "T00:00:00Z"
-        task = gtasks.create_task(chat_id, title, due, notes)
+
+        # Reuse existing task with same title instead of creating a duplicate
+        existing_tasks = gtasks.list_tasks(chat_id)
+        existing = next((t for t in existing_tasks if t.get('title', '').strip() == title.strip()), None)
+        if existing:
+            task = existing
+            created_new = False
+        else:
+            task = gtasks.create_task(chat_id, title, due, notes)
+            created_new = True
+
         try:
-            conn = get_conn()
+            # Remove any old links for this task to prevent stale reminders
+            conn.execute(
+                "DELETE FROM event_task_links WHERE chat_id=? AND task_id=?",
+                (chat_id, task['id'])
+            )
+            conn.commit()
             add_event_task_link(
                 conn,
                 chat_id=chat_id,
@@ -174,19 +190,23 @@ def create_task_for_event(
                 event_start_utc=event_start_utc_normalized,
                 task_title=title,
             )
-            push_undo(conn, chat_id, 'create_task', task['id'], title, get_current_session_id())
+            if created_new:
+                push_undo(conn, chat_id, 'create_task', task['id'], title, get_current_session_id())
         except Exception as db_err:
             logging.getLogger(__name__).error(
                 "event_task_link DB write failed for task %s: %s", task['id'], db_err
             )
-            try:
-                gtasks.delete_task(chat_id, task['id'])
-            except Exception:
-                pass
+            if created_new:
+                try:
+                    gtasks.delete_task(chat_id, task['id'])
+                except Exception:
+                    pass
             return f"❌ Не удалось сохранить привязку задачи к событию: {db_err}"
+
+        verb = "привязана" if not created_new else "создана и привязана"
         return (
-            f"✅ Задача создана и привязана к событию «{event_summary}»: "
-            f"{title} (id: {task['id']}). Напомню за 4 часа до начала."
+            f"✅ Задача {verb} к событию «{event_summary}»: "
+            f"{title}. Напомню за 4 часа до начала."
         )
     except GoogleAuthExpiredError:
         return _AUTH_ERROR_MSG

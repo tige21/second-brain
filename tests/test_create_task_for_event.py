@@ -26,8 +26,9 @@ def test_due_date_truncation():
     with patch("agent.tools.tasks_tool.get_current_chat_id", return_value=111), \
          patch("agent.tools.tasks_tool.get_current_session_id", return_value="sess1"), \
          patch("agent.tools.tasks_tool.get_conn", return_value=mock_conn), \
+         patch("agent.tools.tasks_tool.gtasks.list_tasks", return_value=[]), \
          patch("agent.tools.tasks_tool.gtasks.create_task", return_value=created_task) as mock_create, \
-         patch("agent.tools.tasks_tool.add_event_task_link") as mock_link, \
+         patch("agent.tools.tasks_tool.add_event_task_link"), \
          patch("agent.tools.tasks_tool.push_undo"):
 
         result = create_task_for_event.invoke({
@@ -55,6 +56,7 @@ def test_link_is_stored(db):
     with patch("agent.tools.tasks_tool.get_current_chat_id", return_value=111), \
          patch("agent.tools.tasks_tool.get_current_session_id", return_value="sess1"), \
          patch("agent.tools.tasks_tool.get_conn", return_value=db), \
+         patch("agent.tools.tasks_tool.gtasks.list_tasks", return_value=[]), \
          patch("agent.tools.tasks_tool.gtasks.create_task", return_value=created_task), \
          patch("agent.tools.tasks_tool.push_undo"):
 
@@ -73,15 +75,47 @@ def test_link_is_stored(db):
     assert links[0]["task_title"] == "Buy groceries"
 
 
+def test_relink_reuses_existing_task(db):
+    """If task with same title already exists, reuse it instead of creating new."""
+    from agent.tools.tasks_tool import create_task_for_event
+    from db.models import get_pending_event_task_links
+    from datetime import datetime, timezone, timedelta
+
+    existing_task = {"id": "task_existing", "title": "Buy groceries"}
+    now = datetime.now(timezone.utc)
+    event_start = (now + timedelta(hours=4)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    with patch("agent.tools.tasks_tool.get_current_chat_id", return_value=111), \
+         patch("agent.tools.tasks_tool.get_current_session_id", return_value="sess1"), \
+         patch("agent.tools.tasks_tool.get_conn", return_value=db), \
+         patch("agent.tools.tasks_tool.gtasks.list_tasks", return_value=[existing_task]), \
+         patch("agent.tools.tasks_tool.gtasks.create_task") as mock_create, \
+         patch("agent.tools.tasks_tool.push_undo"):
+
+        result = create_task_for_event.invoke({
+            "event_id": "evt_new",
+            "event_summary": "New Event",
+            "event_start_utc": event_start,
+            "title": "Buy groceries",
+        })
+
+    mock_create.assert_not_called()
+    assert "✅" in result
+    assert "привязана" in result
+
+
 def test_orphan_cleanup_on_db_failure():
     """If DB write fails after task creation, the orphaned task must be deleted."""
     from agent.tools.tasks_tool import create_task_for_event
 
     created_task = {"id": "task_orphan", "title": "Orphan task"}
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value = MagicMock()
 
     with patch("agent.tools.tasks_tool.get_current_chat_id", return_value=111), \
          patch("agent.tools.tasks_tool.get_current_session_id", return_value="sess1"), \
-         patch("agent.tools.tasks_tool.get_conn", return_value=MagicMock()), \
+         patch("agent.tools.tasks_tool.get_conn", return_value=mock_conn), \
+         patch("agent.tools.tasks_tool.gtasks.list_tasks", return_value=[]), \
          patch("agent.tools.tasks_tool.gtasks.create_task", return_value=created_task), \
          patch("agent.tools.tasks_tool.add_event_task_link", side_effect=Exception("DB error")), \
          patch("agent.tools.tasks_tool.gtasks.delete_task") as mock_delete:
@@ -103,7 +137,7 @@ def test_auth_error_returns_message():
     from services.google_auth import GoogleAuthExpiredError
 
     with patch("agent.tools.tasks_tool.get_current_chat_id", return_value=111), \
-         patch("agent.tools.tasks_tool.gtasks.create_task", side_effect=GoogleAuthExpiredError()):
+         patch("agent.tools.tasks_tool.gtasks.list_tasks", side_effect=GoogleAuthExpiredError()):
 
         result = create_task_for_event.invoke({
             "event_id": "evt4",
