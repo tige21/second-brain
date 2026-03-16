@@ -69,6 +69,18 @@ def update_event(chat_id: int, event_id: str, **fields) -> dict:
         event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=parent_id).execute()
         event_id = parent_id
 
+    # If start is being moved but end is not specified, auto-adjust end to preserve duration.
+    if 'start' in fields and 'end' not in fields:
+        orig_start_str = event.get('start', {}).get('dateTime')
+        orig_end_str = event.get('end', {}).get('dateTime')
+        if orig_start_str and orig_end_str:
+            orig_start = datetime.fromisoformat(orig_start_str.replace('Z', '+00:00'))
+            orig_end = datetime.fromisoformat(orig_end_str.replace('Z', '+00:00'))
+            duration = orig_end - orig_start
+            new_start_str = fields['start'] if isinstance(fields['start'], str) else fields['start'].get('dateTime', orig_start_str)
+            new_start = datetime.fromisoformat(new_start_str.replace('Z', '+00:00'))
+            fields['end'] = (new_start + duration).strftime('%Y-%m-%dT%H:%M:%SZ')
+
     for key, value in fields.items():
         if key in ('start', 'end') and isinstance(value, str):
             event[key] = {'dateTime': value, 'timeZone': 'UTC'}

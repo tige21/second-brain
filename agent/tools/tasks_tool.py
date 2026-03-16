@@ -139,7 +139,7 @@ def delete_task(task_id: str) -> str:
 def create_task_for_event(
     event_id: str,
     event_summary: str,
-    event_start_utc: str,
+    event_start_local: str,
     title: str,
     notes: str | None = None,
 ) -> str:
@@ -151,7 +151,7 @@ def create_task_for_event(
     create_task_for_event instead to ensure the notification link is stored.
     event_id: calendar event ID (get via get_calendar_events if not known).
     event_summary: event title (from get_calendar_events or conversation context).
-    event_start_utc: event start in LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T09:50:00".
+    event_start_local: event start in LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T09:50:00".
       Conversion to UTC is done automatically. Do NOT subtract the timezone offset yourself.
     title: task title (use user's exact words).
     notes: optional extra description.
@@ -161,7 +161,7 @@ def create_task_for_event(
         chat_id = get_current_chat_id()
         conn = get_conn()
         tz_offset = int(get_setting(conn, chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
-        event_start_utc_normalized = _to_utc(event_start_utc, tz_offset)
+        event_start_utc_normalized = _to_utc(event_start_local, tz_offset)
         due = event_start_utc_normalized[:10] + "T00:00:00Z"
 
         # Reuse existing task with same title instead of creating a duplicate

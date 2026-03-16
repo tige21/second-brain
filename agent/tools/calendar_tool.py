@@ -58,8 +58,8 @@ def get_calendar_events(start_datetime: str, end_datetime: str) -> str:
 @tool
 def create_calendar_event(
     summary: str,
-    start_utc: str,
-    end_utc: str,
+    start_local: str,
+    end_local: str,
     location: str | None = None,
     description: str | None = None,
     recurrence: str | None = None,
@@ -67,7 +67,7 @@ def create_calendar_event(
     """
     Create a Google Calendar event.
     summary: event title (use user's exact words).
-    start_utc / end_utc: pass LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T14:00:00".
+    start_local / end_local: LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T14:00:00".
       Conversion to UTC is done automatically. Do NOT subtract the timezone offset yourself.
     location: optional venue address.
     description: optional notes.
@@ -76,8 +76,8 @@ def create_calendar_event(
     try:
         chat_id = get_current_chat_id()
         tz_offset = int(get_setting(get_conn(), chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
-        start = _to_utc(start_utc, tz_offset)
-        end = _to_utc(end_utc, tz_offset)
+        start = _to_utc(start_local, tz_offset)
+        end = _to_utc(end_local, tz_offset)
         rec = [recurrence] if recurrence else None
         event = gcal.create_event(chat_id, summary, start, end, location, description, rec)
         push_undo(get_conn(), chat_id, 'create_event', event['id'], event['summary'], get_current_session_id())
@@ -92,8 +92,8 @@ def create_calendar_event(
 def update_calendar_event(
     event_id: str,
     summary: str | None = None,
-    start_utc: str | None = None,
-    end_utc: str | None = None,
+    start_local: str | None = None,
+    end_local: str | None = None,
     location: str | None = None,
     description: str | None = None,
     recurrence: str | None = None,
@@ -101,7 +101,7 @@ def update_calendar_event(
     """
     Update an existing Google Calendar event by event_id.
     Only provide fields that need to be changed. Others will be left unchanged.
-    start_utc / end_utc: pass LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T14:00:00".
+    start_local / end_local: LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T14:00:00".
       Conversion to UTC is done automatically. Do NOT subtract the timezone offset yourself.
     For a single occurrence of recurring event: use instance ID (contains underscore).
     For entire series: use recurringEventId.
@@ -116,10 +116,10 @@ def update_calendar_event(
         fields = {}
         if summary:
             fields['summary'] = summary
-        if start_utc:
-            fields['start'] = _to_utc(start_utc, tz_offset)
-        if end_utc:
-            fields['end'] = _to_utc(end_utc, tz_offset)
+        if start_local:
+            fields['start'] = _to_utc(start_local, tz_offset)
+        if end_local:
+            fields['end'] = _to_utc(end_local, tz_offset)
         if location is not None:
             fields['location'] = location
         if description is not None:
