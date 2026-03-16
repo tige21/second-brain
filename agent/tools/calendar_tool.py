@@ -60,9 +60,9 @@ def create_calendar_event(
     summary: str,
     start_utc: str,
     end_utc: str,
-    location: str = None,
-    description: str = None,
-    recurrence: str = None,
+    location: str | None = None,
+    description: str | None = None,
+    recurrence: str | None = None,
 ) -> str:
     """
     Create a Google Calendar event.
@@ -91,12 +91,12 @@ def create_calendar_event(
 @tool
 def update_calendar_event(
     event_id: str,
-    summary: str = None,
-    start_utc: str = None,
-    end_utc: str = None,
-    location: str = None,
-    description: str = None,
-    recurrence: str = None,
+    summary: str | None = None,
+    start_utc: str | None = None,
+    end_utc: str | None = None,
+    location: str | None = None,
+    description: str | None = None,
+    recurrence: str | None = None,
 ) -> str:
     """
     Update an existing Google Calendar event by event_id.
