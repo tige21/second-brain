@@ -13,7 +13,7 @@ from agent.system_prompt import build_system_prompt
 from agent.prefetch import prefetch_context
 from agent.context import set_current_chat_id, set_current_session_id, _chat_id_var, _session_id_var
 from agent.tools.calendar_tool import get_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event, delete_future_occurrences, delete_single_occurrence, exclude_recurring_weekday
-from agent.tools.tasks_tool import get_tasks, create_task, update_task, complete_task, delete_task
+from agent.tools.tasks_tool import get_tasks, create_task, update_task, complete_task, delete_task, create_task_for_event
 from agent.tools.batch_delete import batch_delete_events, deduplicate_recurring_events
 from agent.tools.route_tool import calculate_route
 from agent.tools.address_book import address_book
@@ -35,6 +35,7 @@ TOOLS = [
     update_task,
     complete_task,
     delete_task,
+    create_task_for_event,
     calculate_route,
     address_book,
     set_reminder,
