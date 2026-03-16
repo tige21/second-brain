@@ -263,3 +263,57 @@ def get_user_token(conn: sqlite3.Connection, chat_id: int) -> str | None:
         "SELECT token_json FROM user_tokens WHERE chat_id = ?", (chat_id,)
     ).fetchone()
     return row[0] if row else None
+
+
+# ── Event-task links ──────────────────────────────────────────────────────────
+
+def add_event_task_link(
+    conn: sqlite3.Connection,
+    chat_id: int,
+    event_id: str,
+    task_id: str,
+    event_summary: str,
+    event_start_utc: str,
+    task_title: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO event_task_links "
+        "(chat_id, event_id, task_id, event_summary, event_start_utc, task_title) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (chat_id, event_id, task_id, event_summary, event_start_utc, task_title),
+    )
+    conn.commit()
+
+
+def get_pending_event_task_links(
+    conn: sqlite3.Connection,
+    window_start_utc: str,
+    window_end_utc: str,
+) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, chat_id, event_id, task_id, event_summary, event_start_utc, task_title "
+        "FROM event_task_links "
+        "WHERE notified = 0 AND event_start_utc >= ? AND event_start_utc <= ?",
+        (window_start_utc, window_end_utc),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_event_task_links_notified(conn: sqlite3.Connection, ids: list[int]) -> None:
+    if not ids:
+        return
+    placeholders = ','.join(['?'] * len(ids))
+    conn.execute(
+        f"UPDATE event_task_links SET notified = 1 WHERE id IN ({placeholders})",
+        tuple(ids),
+    )
+    conn.commit()
+
+
+def cleanup_old_event_task_links(conn: sqlite3.Connection, days: int = 7) -> None:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    conn.execute(
+        "DELETE FROM event_task_links WHERE notified = 1 AND created_at < ?",
+        (cutoff,),
+    )
+    conn.commit()
