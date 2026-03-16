@@ -48,6 +48,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             sent INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS event_task_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            event_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            event_summary TEXT NOT NULL,
+            event_start_utc TEXT NOT NULL,
+            task_title TEXT NOT NULL,
+            notified INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_event_task_links_pending
+            ON event_task_links (notified, event_start_utc);
     """)
 
     # Per-user tables: create fresh or migrate old single-user schema
