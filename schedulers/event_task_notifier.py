@@ -28,12 +28,18 @@ async def check_event_task_reminders(bot) -> None:
     connected = set(list_connected_users(conn))
 
     # Group by (chat_id, event_id, event_summary, event_start_utc)
+    # Rows for disconnected users are marked notified immediately to prevent accumulation.
     groups: dict[tuple, list] = {}
+    skipped_ids: list[int] = []
     for row in links:
         if row["chat_id"] not in connected:
+            skipped_ids.append(row["id"])
             continue
         key = (row["chat_id"], row["event_id"], row["event_summary"], row["event_start_utc"])
         groups.setdefault(key, []).append(row)
+
+    if skipped_ids:
+        mark_event_task_links_notified(conn, skipped_ids)
 
     for (chat_id, event_id, event_summary, event_start_utc), rows in groups.items():
         try:
