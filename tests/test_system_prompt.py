@@ -31,7 +31,7 @@ def test_prompt_injects_active_address():
 def test_prompt_timezone_offset_applied():
     prompt = build_system_prompt("[]", "[]", timezone_offset=5)
     assert "UTC+5" in prompt
-    assert "UTC = местное − 5ч" in prompt
+    assert "UTC+5" in prompt
 
 
 def test_prompt_fallback_for_empty_events():

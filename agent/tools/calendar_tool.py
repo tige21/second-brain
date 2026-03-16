@@ -1,12 +1,31 @@
 import json
+from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from services import google_calendar as gcal
 from services.google_auth import GoogleAuthExpiredError
 from db.database import get_conn
-from db.models import push_undo
+from db.models import push_undo, get_setting
 from agent.context import get_current_chat_id, get_current_session_id
+from config import TIMEZONE_OFFSET
 
 _AUTH_ERROR_MSG = "❌ Авторизация Google истекла. Отправь /connect для повторной авторизации."
+
+
+def _to_utc(dt_str: str | None, tz_offset: int) -> str | None:
+    """Convert local datetime string to UTC ISO format.
+
+    - No suffix (e.g. "2026-03-18T09:50:00")  → subtract tz_offset → UTC with Z
+    - Already has Z or explicit offset (+/-HH:MM) → return as-is
+    """
+    if not dt_str:
+        return dt_str
+    # Already explicit UTC or has timezone offset
+    if dt_str.endswith('Z') or (len(dt_str) > 10 and dt_str[-6] in ('+', '-')):
+        return dt_str
+    # Local time without suffix — convert to UTC
+    local_dt = datetime.fromisoformat(dt_str)
+    utc_dt = local_dt - timedelta(hours=tz_offset)
+    return utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 @tool
@@ -48,15 +67,19 @@ def create_calendar_event(
     """
     Create a Google Calendar event.
     summary: event title (use user's exact words).
-    start_utc / end_utc: ISO 8601 UTC, e.g. "2024-01-15T11:00:00Z".
+    start_utc / end_utc: pass LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T14:00:00".
+      Conversion to UTC is done automatically. Do NOT subtract the timezone offset yourself.
     location: optional venue address.
     description: optional notes.
     recurrence: optional RRULE string WITHOUT "RRULE:" prefix, e.g. "FREQ=WEEKLY;BYDAY=SA,SU".
     """
     try:
         chat_id = get_current_chat_id()
+        tz_offset = int(get_setting(get_conn(), chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
+        start = _to_utc(start_utc, tz_offset)
+        end = _to_utc(end_utc, tz_offset)
         rec = [recurrence] if recurrence else None
-        event = gcal.create_event(chat_id, summary, start_utc, end_utc, location, description, rec)
+        event = gcal.create_event(chat_id, summary, start, end, location, description, rec)
         push_undo(get_conn(), chat_id, 'create_event', event['id'], event['summary'], get_current_session_id())
         return f"✅ Событие создано: {event['summary']} (id: {event['id']})"
     except GoogleAuthExpiredError:
@@ -78,6 +101,8 @@ def update_calendar_event(
     """
     Update an existing Google Calendar event by event_id.
     Only provide fields that need to be changed. Others will be left unchanged.
+    start_utc / end_utc: pass LOCAL time WITHOUT timezone suffix, e.g. "2026-03-18T14:00:00".
+      Conversion to UTC is done automatically. Do NOT subtract the timezone offset yourself.
     For a single occurrence of recurring event: use instance ID (contains underscore).
     For entire series: use recurringEventId.
     To delete this and all future occurrences: use delete_future_occurrences tool instead.
@@ -87,13 +112,14 @@ def update_calendar_event(
     """
     try:
         chat_id = get_current_chat_id()
+        tz_offset = int(get_setting(get_conn(), chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
         fields = {}
         if summary:
             fields['summary'] = summary
         if start_utc:
-            fields['start'] = start_utc
+            fields['start'] = _to_utc(start_utc, tz_offset)
         if end_utc:
-            fields['end'] = end_utc
+            fields['end'] = _to_utc(end_utc, tz_offset)
         if location is not None:
             fields['location'] = location
         if description is not None:
