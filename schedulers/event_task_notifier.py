@@ -1,20 +1,20 @@
 import logging
 from datetime import datetime, timezone, timedelta
 
+from db.database import get_conn
+from db.models import (
+    list_connected_users,
+    get_pending_event_task_links,
+    mark_event_task_links_notified,
+    cleanup_old_event_task_links,
+    get_setting,
+)
+
 logger = logging.getLogger(__name__)
 
 
 async def check_event_task_reminders(bot) -> None:
     """Send notifications for events with linked tasks starting in ~4 hours."""
-    from db.database import get_conn
-    from db.models import (
-        list_connected_users,
-        get_pending_event_task_links,
-        mark_event_task_links_notified,
-        cleanup_old_event_task_links,
-        get_setting,
-    )
-
     conn = get_conn()
     now = datetime.now(timezone.utc)
     window_start = (now + timedelta(hours=3, minutes=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
