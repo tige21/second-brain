@@ -126,9 +126,9 @@ async def run_agent(chat_id: int, user_message: str) -> str:
 
     try:
         conn = get_conn()
-        context = await asyncio.to_thread(prefetch_context, chat_id)
-        addr_ctx = _get_address_context(conn, chat_id)
         tz_offset = int(get_setting(conn, chat_id, 'timezone_offset') or TIMEZONE_OFFSET)
+        context = await asyncio.to_thread(prefetch_context, chat_id, tz_offset)
+        addr_ctx = _get_address_context(conn, chat_id)
 
         system_message = build_system_prompt(
             today_events=context['today_events'],

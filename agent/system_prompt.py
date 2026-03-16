@@ -12,7 +12,7 @@ SYSTEM_PROMPT_TEMPLATE = """\
 - СОХРАНЁННЫЕ АДРЕСА: {saved_addresses}
 - ОЖИДАЮЩАЯ ГЕОЛОКАЦИЯ: {pending_location}
 
-СОБЫТИЯ СЕГОДНЯ И ЗАВТРА (TODAY_EVENTS):
+СОБЫТИЯ СЕГОДНЯ И ЗАВТРА (TODAY_EVENTS) — поле start_local уже в местном времени, используй его для определения дня:
 {today_events}
 
 ЗАДАЧИ (TODAY_TASKS):
