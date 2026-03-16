@@ -78,7 +78,7 @@ async def _check_for_user(bot, chat_id: int) -> None:
         depart_str_fmt = local_depart.strftime('%H:%M')
         summary = event.get('summary', 'Событие')
 
-        transit_label = " (оценка)" if is_estimate else " (оценка)"
+        transit_label = " (оценка)" if is_estimate else ""
         text = (
             f"🚀 <b>Пора выходить на «{summary}»</b>\n\n"
             f"📍 Начало в {start_str_fmt}\n"

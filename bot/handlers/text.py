@@ -293,7 +293,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 worst_case = max(driving_minutes, transit_minutes)
                 depart_at = event_start - timedelta(minutes=worst_case + 20)
                 local_depart = depart_at + timedelta(hours=tz_offset)
-                transit_label = " (оценка)" if is_estimate else " (оценка)"
+                transit_label = " (оценка)" if is_estimate else ""
 
                 lines.append(
                     f"📍 <b>{summary}</b>\n"
