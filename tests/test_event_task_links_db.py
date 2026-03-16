@@ -106,14 +106,21 @@ def test_cleanup_old_event_task_links(db):
         "(chat_id, event_id, task_id, event_summary, event_start_utc, task_title, notified, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
         (444, "evt_old", "tsk_old", "Old event", "2024-01-01T09:00:00Z", "Old task",
-         (now - timedelta(days=10)).strftime('%Y-%m-%dT%H:%M:%SZ'))
+         (now - timedelta(days=10)).isoformat())
     )
     db.execute(
         "INSERT INTO event_task_links "
         "(chat_id, event_id, task_id, event_summary, event_start_utc, task_title, notified, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
         (444, "evt_new", "tsk_new", "New event", "2026-03-16T09:00:00Z", "New task",
-         now.strftime('%Y-%m-%dT%H:%M:%SZ'))
+         now.isoformat())
+    )
+    db.execute(
+        "INSERT INTO event_task_links "
+        "(chat_id, event_id, task_id, event_summary, event_start_utc, task_title, notified, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+        (444, "evt_unnotified_old", "tsk_u", "Unnotified old", "2024-01-01T09:00:00Z", "Un task",
+         (now - timedelta(days=10)).isoformat())
     )
     db.commit()
 
@@ -125,3 +132,10 @@ def test_cleanup_old_event_task_links(db):
     event_ids = {r[0] for r in remaining}
     assert "evt_old" not in event_ids
     assert "evt_new" in event_ids
+    assert "evt_unnotified_old" in event_ids  # un-notified rows must not be deleted
+
+
+def test_mark_notified_empty_list_does_not_raise(db):
+    from db.models import mark_event_task_links_notified
+    # Should complete without raising any exception
+    mark_event_task_links_notified(db, [])
