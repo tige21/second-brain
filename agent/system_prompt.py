@@ -128,11 +128,13 @@ def build_system_prompt(
     pending_location: str = "нет",
     timezone_offset: int = 3,
 ) -> str:
+    WEEKDAYS_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
     now_utc = datetime.now(timezone.utc)
     now_local = now_utc + timedelta(hours=timezone_offset)
+    weekday_ru = WEEKDAYS_RU[now_local.weekday()]
     return SYSTEM_PROMPT_TEMPLATE.format(
         current_datetime=now_utc.strftime("%Y-%m-%d %H:%M UTC"),
-        local_datetime=now_local.strftime("%Y-%m-%d %H:%M"),
+        local_datetime=f"{now_local.strftime('%Y-%m-%d %H:%M')} ({weekday_ru})",
         timezone_offset=timezone_offset,
         active_address=active_address,
         saved_addresses=saved_addresses,
