@@ -40,9 +40,9 @@ def get_tasks() -> str:
 @tool
 def create_task(
     title: str,
-    due: str = None,
-    notes: str = None,
-    parent_id: str = None,
+    due: str | None = None,
+    notes: str | None = None,
+    parent_id: str | None = None,
 ) -> str:
     """
     Create a Google Task.
@@ -68,10 +68,10 @@ def create_task(
 @tool
 def update_task(
     task_id: str,
-    title: str = None,
-    due: str = None,
-    notes: str = None,
-    status: str = None,
+    title: str | None = None,
+    due: str | None = None,
+    notes: str | None = None,
+    status: str | None = None,
 ) -> str:
     """
     Update an existing Google Task by task_id.
@@ -141,7 +141,7 @@ def create_task_for_event(
     event_summary: str,
     event_start_utc: str,
     title: str,
-    notes: str = None,
+    notes: str | None = None,
 ) -> str:
     """
     Create a Google Task linked to a specific calendar event.

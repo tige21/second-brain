@@ -9,7 +9,7 @@ from agent.context import get_current_chat_id
 
 
 @tool
-def address_book(operation: str, name: str = None, address: str = None, coords: str = None) -> str:
+def address_book(operation: str, name: str | None = None, address: str | None = None, coords: str | None = None) -> str:
     """
     Manage named address book.
 
