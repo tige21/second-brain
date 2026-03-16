@@ -11,6 +11,8 @@ from schedulers.morning_summary import send_morning_summary
 from schedulers.evening_summary import send_evening_summary
 from schedulers.departure_check import check_departures
 from schedulers.reminder_check import check_reminders
+from schedulers.token_check import check_google_tokens
+from schedulers.event_task_notifier import check_event_task_reminders
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -81,6 +83,25 @@ def main() -> None:
         'interval',
         minutes=15,
         id='departure_check',
+        args=[app.bot],
+    )
+
+    # Event-task reminders: every 15 minutes
+    scheduler.add_job(
+        check_event_task_reminders,
+        'interval',
+        minutes=15,
+        id='event_task_reminders',
+        args=[app.bot],
+    )
+
+    # Google token check: daily at 09:00 UTC (12:00 MSK)
+    scheduler.add_job(
+        check_google_tokens,
+        'cron',
+        hour=9,
+        minute=0,
+        id='token_check',
         args=[app.bot],
     )
 
