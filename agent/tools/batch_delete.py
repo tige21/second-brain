@@ -3,7 +3,10 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from langchain_core.tools import tool
 from services import google_calendar as gcal
+from services.google_auth import GoogleAuthExpiredError
 from agent.context import get_current_chat_id
+
+_AUTH_ERROR_MSG = "❌ Авторизация Google истекла. Отправь /connect для повторной авторизации."
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,8 @@ def batch_delete_events(event_ids: list[str]) -> str:
         if errors:
             result += f"\n⚠️ Ошибки при удалении: {'; '.join(errors)}"
         return result
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         logger.error(f"batch_delete_events outer error: {e}")
         return f"❌ Ошибка при пакетном удалении: {e}"
@@ -91,6 +96,8 @@ def deduplicate_recurring_events(summary: str) -> str:
         if errors:
             result += f"\n⚠️ Ошибки: {'; '.join(errors)}"
         return result
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         logger.error(f"deduplicate_recurring_events error: {e}")
         return f"❌ Ошибка при удалении дублей: {e}"

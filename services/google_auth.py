@@ -1,15 +1,20 @@
 import json
 import os
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import Flow
+
+
+class GoogleAuthExpiredError(Exception):
+    """Raised when the Google OAuth refresh token has been revoked or expired."""
 
 SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/tasks',
 ]
 
-_REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
+_REDIRECT_URI = 'https://second-brain-bot.duckdns.org/oauth/callback'
 _creds_cache: dict[int, Credentials] = {}
 
 
@@ -47,8 +52,15 @@ def get_credentials(chat_id: int) -> Credentials:
     if token_json:
         creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            save_user_token(conn, chat_id, creds.to_json())
+            try:
+                creds.refresh(Request())
+                save_user_token(conn, chat_id, creds.to_json())
+            except RefreshError as e:
+                _creds_cache.pop(chat_id, None)
+                raise GoogleAuthExpiredError(
+                    "Авторизация Google истекла или была отозвана. "
+                    "Отправь /connect для повторной авторизации."
+                ) from e
         if creds and creds.valid:
             _creds_cache[chat_id] = creds
             return creds
@@ -58,13 +70,13 @@ def get_credentials(chat_id: int) -> Credentials:
     )
 
 
-def get_auth_url() -> str:
-    """Generate OAuth authorization URL for manual code flow."""
+def get_auth_url(chat_id: int) -> str:
+    """Generate OAuth authorization URL. Encodes chat_id as state for callback."""
     from config import GOOGLE_CREDENTIALS_JSON
     flow = Flow.from_client_secrets_file(
         GOOGLE_CREDENTIALS_JSON, scopes=SCOPES, redirect_uri=_REDIRECT_URI
     )
-    auth_url, _ = flow.authorization_url(prompt='consent')
+    auth_url, _ = flow.authorization_url(prompt='consent', state=str(chat_id))
     return auth_url
 
 

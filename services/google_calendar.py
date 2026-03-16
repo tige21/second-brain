@@ -1,8 +1,14 @@
 import re
 from datetime import datetime, timezone, timedelta
 from googleapiclient.discovery import build
-from tenacity import retry, stop_after_attempt, wait_exponential
-from services.google_auth import get_credentials
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
+from services.google_auth import get_credentials, GoogleAuthExpiredError
+
+_retry = dict(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_not_exception_type(GoogleAuthExpiredError),
+)
 from config import GOOGLE_CALENDAR_ID
 
 
@@ -10,7 +16,7 @@ def _service(chat_id: int):
     return build('calendar', 'v3', credentials=get_credentials(chat_id))
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(**_retry)
 def list_events(chat_id: int, time_min: str, time_max: str, single_events: bool = True) -> list[dict]:
     result = _service(chat_id).events().list(
         calendarId=GOOGLE_CALENDAR_ID,
@@ -23,7 +29,7 @@ def list_events(chat_id: int, time_min: str, time_max: str, single_events: bool 
     return result.get('items', [])
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(**_retry)
 def create_event(
     chat_id: int,
     summary: str,
@@ -50,7 +56,7 @@ def create_event(
     return _service(chat_id).events().insert(calendarId=GOOGLE_CALENDAR_ID, body=body).execute()
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(**_retry)
 def update_event(chat_id: int, event_id: str, **fields) -> dict:
     svc = _service(chat_id)
     event = svc.events().get(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
@@ -81,7 +87,7 @@ def update_event(chat_id: int, event_id: str, **fields) -> dict:
     ).execute()
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(**_retry)
 def delete_event(chat_id: int, event_id: str) -> None:
     _service(chat_id).events().delete(calendarId=GOOGLE_CALENDAR_ID, eventId=event_id).execute()
 

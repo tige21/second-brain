@@ -11,7 +11,7 @@ from db.models import (
 from bot.formatters import md_to_html, chunk_message
 from services import google_calendar as gcal
 from services import google_tasks as gtasks
-from services.google_auth import get_auth_url, exchange_code
+from services.google_auth import get_auth_url
 
 
 def _is_auth_code(text: str) -> bool:
@@ -59,12 +59,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # /connect — OAuth flow
     if text.startswith('/connect'):
         try:
-            auth_url = get_auth_url()
+            auth_url = get_auth_url(chat_id)
             await message.reply_text(
                 "🔗 <b>Подключение Google Calendar</b>\n\n"
-                f"1. Открой ссылку:\n{auth_url}\n\n"
-                "2. Войди в аккаунт Google и разреши доступ\n"
-                "3. Скопируй код авторизации и отправь его сюда",
+                f"Открой ссылку и войди в аккаунт Google — после авторизации бот получит доступ автоматически:\n\n"
+                f"{auth_url}",
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
@@ -344,20 +343,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await message.reply_text(f"⚠️ Ошибка: {ex}")
         return
 
-    # Detect pasted Google OAuth code
-    if _is_auth_code(text):
-        try:
-            exchange_code(chat_id, text.strip())
-            await message.reply_text(
-                "✅ Google Calendar успешно подключён!\n"
-                "Теперь можешь управлять событиями и задачами."
-            )
-        except Exception as e:
-            await message.reply_text(
-                f"⚠️ Ошибка авторизации: {e}\n\n"
-                "Попробуй /connect ещё раз."
-            )
-        return
 
     # Forwarded messages
     user_input = text

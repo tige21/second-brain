@@ -1,9 +1,12 @@
 import json
 from langchain_core.tools import tool
 from services import google_calendar as gcal
+from services.google_auth import GoogleAuthExpiredError
 from db.database import get_conn
 from db.models import push_undo
 from agent.context import get_current_chat_id, get_current_session_id
+
+_AUTH_ERROR_MSG = "❌ Авторизация Google истекла. Отправь /connect для повторной авторизации."
 
 
 @tool
@@ -27,6 +30,8 @@ def get_calendar_events(start_datetime: str, end_datetime: str) -> str:
                 "recurringEventId": e.get("recurringEventId"),
             })
         return json.dumps(result, ensure_ascii=False)
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         return f"❌ Ошибка при получении событий: {e}"
 
@@ -54,6 +59,8 @@ def create_calendar_event(
         event = gcal.create_event(chat_id, summary, start_utc, end_utc, location, description, rec)
         push_undo(get_conn(), chat_id, 'create_event', event['id'], event['summary'], get_current_session_id())
         return f"✅ Событие создано: {event['summary']} (id: {event['id']})"
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         return f"❌ Ошибка при создании события: {e}"
 
@@ -97,6 +104,8 @@ def update_calendar_event(
             return "❌ Не указано ни одного поля для обновления. Укажи что именно нужно изменить."
         event = gcal.update_event(chat_id, event_id, **fields)
         return f"✅ Событие обновлено: {event.get('summary')} (id: {event_id})"
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         return f"❌ Ошибка при обновлении события: {e}"
 
@@ -116,6 +125,8 @@ def delete_calendar_event(event_id: str) -> str:
         chat_id = get_current_chat_id()
         deleted_id = gcal.delete_event_or_series(chat_id, event_id)
         return f"✅ Событие удалено полностью (id: {deleted_id})."
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         return f"❌ Ошибка при удалении события: {e}"
 
@@ -135,6 +146,8 @@ def delete_future_occurrences(instance_id: str) -> str:
         if result.get("status") == "deleted single event":
             return "✅ Одиночное событие удалено."
         return f"✅ Это и все последующие повторения удалены. Серия завершена до этой даты."
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         return f"❌ Ошибка при удалении последующих событий: {e}"
 
@@ -157,6 +170,8 @@ def delete_single_occurrence(instance_id: str) -> str:
         summary = event.get('summary', instance_id)
         push_undo(get_conn(), chat_id, 'delete_occurrence', instance_id, summary, get_current_session_id())
         return f"✅ Повторение «{summary}» отменено. Остальные даты серии не изменены."
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except Exception as e:
         return f"❌ Ошибка при отмене повторения: {e}"
 
@@ -178,6 +193,8 @@ def exclude_recurring_weekday(event_id: str, weekday: str) -> str:
                    'TH': 'четверги', 'FR': 'пятницы', 'SA': 'субботы', 'SU': 'воскресенья'}
         day_name = days_ru.get(weekday.upper(), weekday)
         return f"✅ {event.get('summary', 'Событие')} — {day_name} исключены из расписания навсегда."
+    except GoogleAuthExpiredError:
+        return _AUTH_ERROR_MSG
     except ValueError as e:
         return f"❌ {e}"
     except Exception as e:
