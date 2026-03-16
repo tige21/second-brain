@@ -333,11 +333,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 if 'T' in dt_str:
                     dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00')).astimezone(timezone.utc)
                     time_str = (dt + timedelta(hours=tz_offset)).strftime('%H:%M')
+                    time_part = f"⏰ <b>{time_str}</b>"
                 else:
-                    time_str = "весь день"
+                    time_part = "📅 <b>весь день</b>"
                 summary = e.get('summary', 'Без названия')
                 loc = f" 📍{e['location']}" if e.get('location') else ""
-                lines.append(f"• {time_str} — {summary}{loc}")
+                lines.append(f"{time_part}  {summary}{loc}")
             await message.reply_text("\n".join(lines), parse_mode="HTML")
         except Exception as ex:
             await message.reply_text(f"⚠️ Ошибка: {ex}")
