@@ -1,4 +1,5 @@
 import json
+import logging
 from langchain_core.tools import tool
 from services import google_tasks as gtasks
 from services.google_auth import GoogleAuthExpiredError
@@ -170,7 +171,6 @@ def create_task_for_event(
             )
             push_undo(conn, chat_id, 'create_task', task['id'], title, get_current_session_id())
         except Exception as db_err:
-            import logging
             logging.getLogger(__name__).error(
                 "event_task_link DB write failed for task %s: %s", task['id'], db_err
             )
