@@ -92,3 +92,16 @@ sshpass -p '8zgsro6V' ssh -o StrictHostKeyChecking=no root@185.214.108.29 'DEBIA
 - Backend runs behind Nginx as reverse proxy
 - Location: Дронтен, Нидерланды
 - Hosting provider: 62yun.ru (billing), DC — Netherlands
+
+## CouchDB admin users
+
+| User | Purpose | Where used |
+|---|---|---|
+| `livesync` | Personal vault (owner's vault: `obsidian` DB) | LiveSync plugin on mac/iPhone |
+| `pwa_provisioner` | PWA backend uses this to create per-user vaults | env on `second-brain-pwa` service |
+
+To rotate `pwa_provisioner` password:
+1. Generate new: `openssl rand -base64 30 | tr -d '/+=' | head -c 40`
+2. `curl -X PUT -u livesync:<livesync-pass> http://127.0.0.1:5984/_node/_local/_config/admins/pwa_provisioner -d '"<new-pass>"'`
+3. Update `COUCHDB_ADMIN_PASS=` in `/etc/systemd/system/second-brain-pwa.service.d/vault-env.conf`.
+4. `systemctl daemon-reload && systemctl restart second-brain-pwa`
