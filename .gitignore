@@ -9,3 +9,12 @@ venv/
 *.egg-info/
 dist/
 .pytest_cache/
+
+# Local Claude Code / agent caches and session artifacts (machine-local, do not commit)
+.agents/
+.claude/
+.superpowers/
+.playwright-mcp/
+
+# Screenshots and screen captures — keep out of source tree
+*.png

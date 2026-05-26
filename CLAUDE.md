@@ -64,3 +64,73 @@ Requires `.env` file (see `config.py` for all variables). Key required vars: `TE
 - **After completing a feature:** run `code-reviewer` agent and `webapp-testing` skill checks
 - **For UI components:** use `accessibility-tester` agent guidelines, follow `web-design-guidelines` skill
 - **For performance:** consult `performance-engineer` agent on bundle size, lazy loading, caching strategies
+
+## Hard-won rules (Second Brain PWA `/Users/macbook/Documents/projects/second-brain-web/`)
+
+These are not style preferences. Each rule maps to a real bug that took 15+ minutes to find. Read this list before touching the relevant area.
+
+### Deployment
+
+- **Backend systemd path = `/root/second-brain-pwa/backend/`**, NOT `/var/www/second-brain-api/`. Verify with `systemctl cat second-brain-pwa | grep WorkingDirectory` if unsure. The frontend still goes to `/var/www/second-brain-pwa/`. Both paths are documented in `SERVER.md`.
+- After every backend deploy, restart with `systemctl restart second-brain-pwa` AND tail logs (`journalctl -u second-brain-pwa -n 30`) to confirm clean startup before claiming "done".
+- Never claim a fix is deployed without verifying via Playwright or curl that the actual served bundle/code reflects the change. Bundle hash in `<script src>` is a quick check.
+
+### Service Worker + React Query (the most painful trap)
+
+- **Any `/api/*` endpoint the user mutates from the UI MUST be `NetworkOnly` in `frontend/vite.config.ts` workbox `runtimeCaching`.** Both `StaleWhileRevalidate` and `NetworkFirst` will silently serve pre-mutation JSON to React Query — SWR always, NetworkFirst every time the network timeout fires (very common on DPI-throttled links from Russia). The symptom: "I toggled X, saw the success toast, refreshed, and X reverted." Offline reads are covered by `PersistQueryClientProvider` (IDB), so dropping the SW layer for mutable data costs nothing.
+- Only genuinely immutable assets (fonts, avatars) belong in `StaleWhileRevalidate`/`CacheFirst`.
+- Push subscribe/unsubscribe (`sw/register.ts`) MUST call `fetchWithAuth`, never raw `fetch`. Raw `fetch` skips the 401 refresh flow, so a stale JWT silently fails the POST `/api/push/subscribe` while the caller happily sets `notification_prefs.enabled = true` — we end up with an empty `push_subscriptions` table and a toggle that appears to work.
+- After changing workbox rules, the new SW takes a full page reload to activate. For testing locally, unregister the old SW and clear caches via DevTools or programmatically: `caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))))`.
+- The `controllerchange` listener in `frontend/src/main.tsx` auto-reloads when a new SW takes control — don't remove it.
+
+### Mutations & user feedback
+
+- **Every React Query mutation hook MUST have both `onSuccess` and `onError` with `showToast(...)`** (`frontend/src/components/toast.tsx`). Silent failures are forbidden — they were the #1 source of "I clicked save and nothing happened" reports.
+- For mutations that should refresh other queries, prefer `await queryClient.refetchQueries(...)` inside the `mutationFn` over `invalidateQueries` in `onSuccess`. `invalidate` is lazy and easy to lose to component remount races.
+- Optimistic updates must `await queryClient.cancelQueries(...)` BEFORE snapshotting state. See `useDeleteEvent` in `frontend/src/hooks/use-events.ts` for the canonical pattern.
+
+### Google API integration
+
+- All `googleapiclient` `.execute()` calls in `backend/app/services/google_calendar.py` and `google_tasks.py` MUST be wrapped with `try/except HttpError as e: raise _translate_http_error(e)`. The wrapper produces typed `GoogleApiError(status, reason, message)` with Russian human messages. Never let raw `HttpError` reach API endpoints or schedulers.
+- API endpoints (`api/events.py`, `tasks.py`, `search.py`, `addresses.py`) catch `GoogleApiError` and call `_raise_http(e)` to map to `HTTPException` with `{reason, message}` body. `reason="reauth_required"` → 401, `quota`/`rateLimit` → 429, `notFound` → 404.
+- `get_google_credentials()` in `services/google_auth.py` catches `RefreshError` and raises `GoogleApiError(401, "reauth_required", ...)`. Never silently store a stale access_token.
+
+### Agent tools (`backend/app/chat/tools.py`)
+
+- Tools that return formatted text for the user MUST also embed event/task IDs the LLM can quote back. Use the `⟦id=…⟧` block convention. The system prompt rule 11 strips these from final user output. **Without IDs in the response, the LLM cannot call subsequent update/delete tools — it has no handle.** This was the rename-event bug.
+- **Tools returning multi-day data (e.g. `get_calendar_events` for a week) MUST group results by local date with `📅 <weekday>, <day> <month>` headers.** A flat list of `HH:MM` lines across days is unreadable — the user can't tell which day each event belongs to. Use the `_local_date(ev)` + `_format_date_header(date_str)` helpers in `tools.py`. Single-day ranges skip the header. The system prompt rule 11 explicitly tells the agent to preserve these headers verbatim.
+- For recurring events: `delete_calendar_event` and `update_calendar_event` MUST accept a `scope: "instance"|"following"|"all"` parameter and the system prompt MUST instruct the agent to ask the user which scope before calling. Same for the frontend `EventDetailSheet` delete confirmation.
+- **Patching a recurring master with `scope="all"` for a time-of-day change MUST preserve the master's original DATE.** Google rejects (400) any patch that shifts `DTSTART` of a recurring series with existing instances/exceptions. Use the `_merge_time_into_master_date(master_dt_obj, new_dt_iso)` helper in `tools.py` — it keeps `master_date` from the master's existing `start.dateTime` and substitutes only the `T<HH:MM:SS><tz>` portion from the agent's payload. Same applies to a future API endpoint that allows full-series time changes.
+- Every chat tool wraps Google calls in `try: ... except Exception as e: return f"Ошибка...: {_gcal_err(e)}"`. `_gcal_err` checks for `GoogleApiError` and returns the human message.
+
+### Long-running operations
+
+- Agent invocations in `backend/app/chat/websocket.py` and `backend/app/api/voice.py` MUST be wrapped in `asyncio.wait_for(..., timeout=90)`. On `TimeoutError`, send a user-facing error message — never let the UI hang on a stuck LLM/proxy.
+- Voice push notification text must be sanitized: strip newlines, truncate to ~120 chars. Raw exception strings break push body formatting.
+
+### Schedulers (`backend/app/schedulers/`)
+
+- Every job MUST have `coalesce=True, max_instances=1, misfire_grace_time=60` in `setup.py` `_COMMON`. Without these, a slow `reminder_check` (1 min interval) can spawn parallel instances and produce duplicate pushes.
+- Per-user loops MUST be wrapped in `try/except Exception as e: logger.warning(...)` so one user's broken token doesn't kill the job for everyone else.
+- Jobs that depend on local time-of-day (morning/evening summaries) MUST compute the window using each user's `UserSettings.timezone_offset`. Hardcoded UTC `now.replace(hour=0, ...)` is a bug.
+- Push delivery in any scheduler MUST go through `send_push_and_cleanup(db, sub, payload)` (`services/push.py`), which deletes 404/410 subscriptions and wraps the sync `webpush()` in `asyncio.to_thread`. Never call raw `send_push()` from a scheduler.
+- Reminders are only marked `sent=True` if at least one push succeeded OR there are zero subscriptions OR 24h have passed (give-up cap). Don't mark sent unconditionally.
+- Per-user dispatch with at-most-once-per-day semantics (e.g. `summary_dispatch_job`): use a dedup table like `SentSummary(user_id, kind, date_local)` with `UniqueConstraint`, INSERT first then send, rollback the insert on send failure.
+
+### Frontend auth
+
+- `frontend/src/lib/api.ts` MUST distinguish transient errors (network/5xx on refresh) from hard auth failures. Transient → return original 401 to caller, do not log out. Only `reason: "reauth_required"` from backend → `redirectToLogin('google')` with banner on `/login?reason=google`.
+- Never call `redirectToLogin()` on a network error or 429.
+
+### Frontend UI conventions
+
+- The `EventDetailSheet` non-editing branch shows a `Repeat` `InfoRow` with `formatRecurrenceLabel(event)` when `isRecurringEvent(event)` is true. Don't hide recurrence info behind a delete-button click.
+- The dashboard renders ONE unified empty-state card («🌿 Сегодня свободный день») when both events and tasks are empty — not two stacked grey "nothing here" cards.
+- Calendar timeline events (`TimelineEvent`, `AllDayChip` in `pages/calendar.tsx`) MUST have `onClick` wired to open `EventDetailSheet`. Tap-to-edit on today's events is the most-used flow.
+- Mutations triggered by rapid taps (task complete, task delete) need module-level `inFlightMutations: Set<string>` dedup keyed by id+state. See `useCompleteTask`/`useDeleteTask` in `hooks/use-tasks.ts`.
+
+### Process
+
+- **Don't write code → deploy → test → fix → re-deploy in a loop.** Before writing, read the relevant existing files and check if the failure mode is a known one from this list. Most "weird" bugs in this codebase are SW caching, deployment path mismatch, missing onError, or hardcoded UTC.
+- Run `python3 -c "import ast; ast.parse(open(f).read())"` on every modified Python file and `npx tsc --noEmit` on every frontend change BEFORE deploying. Both are <2 seconds. They catch syntax errors that would otherwise ship to prod.
+- After any backend change touching schedulers, services, or models: tail `journalctl -u second-brain-pwa -n 30 --no-pager` after restart to verify clean startup.
