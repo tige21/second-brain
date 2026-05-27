@@ -127,3 +127,27 @@ After editing: `systemctl daemon-reload && systemctl restart second-brain-pwa`.
 - `sshpass` required (`brew install hudochenkov/sshpass/sshpass` on macOS).
 - Both hosts: Debian 12 (Bookworm).
 - Backend DB is SQLite at `backend/data/brain.db`. **Always backup before risky operations.**
+
+## Multi-user vault model (decided 2026-05-27 — Option B: E2E for all)
+
+Two tiers of vault coexist by design:
+
+- **Owner vault** (`personal_vault`, plaintext): the admin's. Stored unencrypted
+  on 83.x so the PWA backend can READ it → powers graph, semantic search,
+  raw→wiki processing, and the chat vault tools. Admin-only (gated by
+  `require_admin` / `user.email in admin_emails_list`).
+- **Per-user vaults** (provisioned, E2E-encrypted): any authenticated PWA user
+  can `POST /api/vault/provision` → gets their own CouchDB user + DB + a
+  one-time passphrase + a Setup URI (QR). These are **E2E-encrypted**, so the
+  server CANNOT read them. Users get cross-device Obsidian SYNC only — NOT
+  graph / search / AI processing (those require server-readable content).
+
+This is intentional: privacy for users, full features for the owner. Making
+per-user vaults feature-rich would require storing them plaintext (server can
+read everyone's notes) — explicitly rejected for now. Revisit only if building
+a product where users opt into plaintext.
+
+Setup URI crypto (`backend/app/services/setup_uri.py`) matches obsidian-livesync
+V2 (`encrypt3`/`decryptV2`): `PBKDF2(SHA256(passphrase), randomSalt, 100k)` →
+AES-256-GCM, token `%<hex iv><hex salt><b64 ct>`, URL-encoded. Verified against
+the real plugin's decrypt in Node.
