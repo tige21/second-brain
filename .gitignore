@@ -18,3 +18,8 @@ dist/
 
 # Screenshots and screen captures — keep out of source tree
 *.png
+.serena/
+.codegraph/
+
+# Local analysis/output artifacts (machine-local, do not commit)
+graphify-out/
