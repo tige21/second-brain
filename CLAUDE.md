@@ -71,6 +71,7 @@ These are not style preferences. Each rule maps to a real bug that took 15+ minu
 
 ### Deployment
 
+- **🚨 SERVER MOVED 2026-07-01: production is now the farm `194.5.65.182`** (root/`Aic5TKex`), NOT `185.214.108.29` (that VPS died — ext4 disk failure). The PWA is **co-hosted** on the Dify farm. Same in-box paths (systemd `second-brain-pwa`, `/root/second-brain-pwa/backend/`, frontend `/var/www/second-brain-pwa/`), but: TLS is **certbot** (`/root/issue-tls.sh`), nginx vhosts live in `/etc/nginx/conf.d/*.conf`, and **`rsync` is absent on the farm → deploy via `tar`-over-ssh** (build the frontend on the Mac; 8 GB RAM is tight). ⚠️ Never run `docker compose up` in a dir named `docker` without `-p` on the farm — it collides with Dify and takes the whole farm down (memory `feedback_compose_project_collision`). Full details in `SERVER.md`.
 - **Backend systemd path = `/root/second-brain-pwa/backend/`**, NOT `/var/www/second-brain-api/`. Verify with `systemctl cat second-brain-pwa | grep WorkingDirectory` if unsure. The frontend still goes to `/var/www/second-brain-pwa/`. Both paths are documented in `SERVER.md`.
 - After every backend deploy, restart with `systemctl restart second-brain-pwa` AND tail logs (`journalctl -u second-brain-pwa -n 30`) to confirm clean startup before claiming "done".
 - Never claim a fix is deployed without verifying via Playwright or curl that the actual served bundle/code reflects the change. Bundle hash in `<script src>` is a quick check.

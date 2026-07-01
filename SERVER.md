@@ -1,29 +1,47 @@
 # Server Access
 
-> **Consolidated 2026-06-12 → single production host `185.214.108.29` (NL).**
-> The PWA used to run on two divergent deploys (83.x + 185.x); split-brain
-> sessions/data forced a consolidation. `185.x` is now the **sole** PWA host;
-> `83.x`'s PWA is decommissioned (see bottom). Geo note: ipinfo puts `83.x` in
-> **Moscow/RU** (earlier docs wrongly said NL) and `185.x` in **Amsterdam/NL**.
+> **🚨 MIGRATED 2026-07-01 → production host is now the FARM `194.5.65.182`.**
+> `185.214.108.29` **DIED** (ext4 disk failure — recurring `aborted journal` →
+> root read-only). All chosen services were emergency-migrated to the Dify farm
+> `194.5.65.182` (Frankfurt/NL VPS that also runs the 12-bot Dify farm — PWA is
+> now **co-hosted** next to Dify). `185.x` and `83.x` are both decommissioned
+> (see bottom). Data was rescued (brain.db, CouchDB vault, cards dump, configs).
+> See memory `project_vds_185_migration` + `feedback_compose_project_collision`.
 
-## Production VPS — PWA + CouchDB (`second-braintige.online`)
+## Production VPS — the FARM (PWA + CouchDB + cards, co-hosted with Dify)
 
 ```
-Host:     185.214.108.29
+Host:     194.5.65.182
 User:     root
-Password: 8zgsro6V
-Provider: Amsterdam / NL
+Password: Aic5TKex
+Provider: Frankfurt / NL (62yun, promo-B: 4 CPU / 8GB / 150GB NVMe)
+Also runs: the whole Dify farm (docker: dify, litellm, skills-api, tg-bridge, …)
 Domains:  second-braintige.online (apex + www)  → PWA
+          second-brain-pwa.duckdns.org          → PWA (duckdns)
           sync.second-braintige.online          → CouchDB (Obsidian LiveSync)
+          cards-staging.duckdns.org             → cards-game frontend (static)
+          cards-api-staging.duckdns.org         → cards-game API (:8080)
+          sparkcards.space (+ www)              → static (Bunny GEO DNS; pending)
 ```
 
-This is the **only** PWA production host. nginx serves the frontend at
+The PWA nginx **vhost lives in `/etc/nginx/conf.d/second-brain-pwa.conf`** (host
+nginx uses `conf.d/*.conf`, NOT `sites-enabled/`). It serves the frontend at
 `/var/www/second-brain-pwa/` and reverse-proxies `/api/*` to `127.0.0.1:8766`
-(uvicorn, systemd unit `second-brain-pwa`). One local CouchDB on `127.0.0.1:5984`
-serves BOTH the PWA (`personal_vault` + per-user provisioned vaults) AND the
-public Obsidian LiveSync at `sync.second-braintige.online`.
+(uvicorn, systemd unit `second-brain-pwa`). A dedicated CouchDB (docker,
+`/root/obsidian-livesync/`, `127.0.0.1:5984`) holds `personal_vault` (1879 docs)
++ per-user vaults and serves public Obsidian LiveSync at
+`sync.second-braintige.online`.
 
-DNS `second-braintige.online` (apex + www) → `185.214.108.29`.
+**TLS = certbot** (`certbot --nginx`, NOT acme.sh), auto-renew. Re-issue helper:
+`/root/issue-tls.sh`. DNS `second-braintige.online` (apex + www + sync) →
+`194.5.65.182` (reg.ru zone); duckdns hosts point to `194.5.65.182` too.
+
+⚠️ **Farm co-host landmine:** never run `docker compose up` in a dir named
+`docker` without `-p <project>` — cards-game (`/opt/spark/docker`) collided with
+Dify's project `docker` and took the farm down ~15 min. cards now runs under
+`docker compose -p cards-staging`. Never `--remove-orphans`. Dify's nginx must
+bind `127.0.0.1:8088` (`EXPOSE_NGINX_PORT` in `/opt/dify/docker/.env`); bring
+Dify up with `-f docker-compose.yaml -f docker-compose.override.yml`.
 
 ## Auth — server-side Google OAuth + HttpOnly session cookie
 
@@ -38,53 +56,58 @@ redirect URI `https://second-braintige.online/api/auth/google/callback`.
 ## SSH
 
 ```bash
-# Production (PWA + CouchDB)
-sshpass -p '8zgsro6V' ssh -o StrictHostKeyChecking=no root@185.214.108.29
+# Production = the farm (PWA + CouchDB + cards, co-hosted with Dify)
+sshpass -p 'Aic5TKex' ssh -o StrictHostKeyChecking=no root@194.5.65.182
 ```
 
-## Services on 185.214.108.29 (production)
+## Services on 194.5.65.182 (production, co-hosted)
 
 | Service | Systemd unit / path |
 |---------|---------------------|
 | PWA Frontend (static) | nginx → `/var/www/second-brain-pwa/` |
 | PWA Backend (FastAPI/uvicorn `:8766`) | `second-brain-pwa` → `/root/second-brain-pwa/backend/` |
 | CouchDB (personal_vault + per-user + public LiveSync) | Docker, `/root/obsidian-livesync/`, `127.0.0.1:5984` |
-| nginx (`second-braintige.online` + `sync.…`) | `/etc/nginx/` |
+| cards-game (postgres + api `:8080`) | `docker compose -p cards-staging` → `/opt/spark/docker` |
+| nginx vhosts (all domains) | `/etc/nginx/conf.d/*.conf` |
+| Dify farm (12 bots) | Docker `/opt/dify/docker`, nginx `127.0.0.1:8088` |
 
 ⚠️ Backend `WorkingDirectory` is `/root/second-brain-pwa/backend/`. Backend DB is
 SQLite at `backend/data/brain.db`. After any backend deploy: `systemctl restart
 second-brain-pwa` then tail `journalctl -u second-brain-pwa -n 30 --no-pager` to
 confirm clean startup before claiming done.
 
-## Deploy cheatsheet (production = 185.x)
+## Deploy cheatsheet (production = the farm 194.5.65.182)
 
-### Frontend (Vite build → static)
+⚠️ **`rsync` is NOT installed on the farm** — use `tar`-over-ssh (build the
+frontend on the Mac; the farm's 8GB RAM is tight for a vite build).
+
+### Frontend (Vite build on Mac → static)
 
 ```bash
 cd frontend && npm run build
-sshpass -p '8zgsro6V' rsync -avz --delete \
-  -e 'ssh -o StrictHostKeyChecking=no' \
-  dist/ root@185.214.108.29:/var/www/second-brain-pwa/
+export COPYFILE_DISABLE=1   # avoid macOS xattr tar noise
+tar czf - -C dist . | sshpass -p 'Aic5TKex' ssh -o StrictHostKeyChecking=no \
+  root@194.5.65.182 'rm -rf /var/www/second-brain-pwa && mkdir -p /var/www/second-brain-pwa && tar xzf - -C /var/www/second-brain-pwa'
 ```
 
 ### Backend (FastAPI)
 
 ```bash
-sshpass -p '8zgsro6V' rsync -avz \
-  -e 'ssh -o StrictHostKeyChecking=no' \
-  backend/ root@185.214.108.29:/root/second-brain-pwa/backend/ \
-  --exclude='__pycache__' --exclude='.venv' --exclude='*.pyc' \
-  --exclude='.pytest_cache' --exclude='data' --exclude='*.db' \
-  --exclude='*.db-journal' --exclude='.env' --exclude='*.egg-info'
+# push code (NEVER the data/ dir — brain.db is the prod SQLite DB), then restart
+export COPYFILE_DISABLE=1
+tar czf - -C backend --exclude='__pycache__' --exclude='.venv' --exclude='*.pyc' \
+  --exclude='.pytest_cache' --exclude='data' --exclude='*.db' --exclude='.env' \
+  --exclude='*.egg-info' . | sshpass -p 'Aic5TKex' ssh -o StrictHostKeyChecking=no \
+  root@194.5.65.182 'tar xzf - -C /root/second-brain-pwa/backend'
 
-sshpass -p '8zgsro6V' ssh -o StrictHostKeyChecking=no root@185.214.108.29 \
+sshpass -p 'Aic5TKex' ssh -o StrictHostKeyChecking=no root@194.5.65.182 \
   'systemctl restart second-brain-pwa && journalctl -u second-brain-pwa -n 30 --no-pager'
 ```
 
-🚨 **NEVER use `--delete` for the backend rsync** — it would wipe `data/brain.db`
-(the SQLite production DB). The excludes above are the safe path.
+🚨 **NEVER push the `data/` dir** — it holds `data/brain.db` (SQLite production
+DB). The `--exclude='data'` above is the safe path. TLS is certbot (`/root/issue-tls.sh`).
 
-## CouchDB admin users (on 185.x)
+## CouchDB admin users (on the farm)
 
 | User | Purpose |
 |---|---|
@@ -92,7 +115,7 @@ sshpass -p '8zgsro6V' ssh -o StrictHostKeyChecking=no root@185.214.108.29 \
 | `livesync` | Owner's Obsidian LiveSync devices, public via `sync.second-braintige.online`. |
 | `pwa_provisioner` | Provisions per-user E2E vaults. |
 
-## Vault provisioning env vars (185.x systemd drop-in)
+## Vault provisioning env vars (farm systemd drop-in)
 
 `/etc/systemd/system/second-brain-pwa.service.d/vault-env.conf`:
 
@@ -106,6 +129,15 @@ Environment="ADMIN_EMAILS=mregoryt@gmail.com"
 `ADMIN_EMAILS` lives in this drop-in, NOT `.env` — an ad-hoc python that reads
 only `.env` sees it empty. After editing: `systemctl daemon-reload && systemctl
 restart second-brain-pwa`.
+
+## Decommissioned — 185.214.108.29 (was PWA prod, Amsterdam/NL, 62yun)
+
+Disk **failed** 2026-06-30/07-01 (ext4 `aborted journal` → root read-only, recurring).
+All chosen services emergency-migrated to the farm `194.5.65.182`; data rescued
+first (`brain.db`, CouchDB vault, cards dump, nginx/systemd/TLS configs, secrets).
+NOT migrated (stay dead with 185): TG-bot `second-brain`, VPN xray/x-ui, marketbox,
+claude-office, mtproxy, `openai.second-braintige.online` (openai-proxy). Open a
+62yun ticket to replace the disk / refund, then retire the VDS.
 
 ## Decommissioned — 83.217.215.66 (was PWA prod, RU/Moscow, VDSINA)
 
@@ -133,7 +165,7 @@ data migration was relayed through the Mac.)
 Two tiers of vault coexist by design:
 
 - **Owner vault** (`personal_vault`, plaintext): the admin's. Stored unencrypted
-  on 185.x so the PWA backend can READ it → powers graph, semantic search,
+  on the farm (194.x) so the PWA backend can READ it → powers graph, semantic search,
   raw→wiki processing, English lesson ingest, and the chat vault tools. Admin-only
   (gated by `require_admin` / `user.email in admin_emails_list`).
 - **Per-user vaults** (provisioned, E2E-encrypted): any authenticated PWA user
