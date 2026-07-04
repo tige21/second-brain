@@ -169,6 +169,10 @@ data migration was relayed through the Mac.)
   `GET /speaking/mistakes` (what to fix + how), `POST /speaking/generate-session`
   (mode=mistakes — prompts targeted at YOUR recurring errors / mode=topic), plus
   the classic per-tense sets; progress has a speaking coverage block.
+  **Daily speaking session** (2026-07-04): one-button `POST /speaking/daily-session`
+  (3 LLM prompts for recurring mistakes + 5 vetted focus-tense prompts; focus by
+  mistake-rule match → ISO-week rotation) + opt-in push (`speaking_daily` pref,
+  `user_settings.speaking_daily_hour`, deep-link `/english/speaking?session=daily`).
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
