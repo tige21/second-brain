@@ -156,9 +156,17 @@ data migration was relayed through the Mac.)
 - SSH standard port `22`. `sshpass` required (`brew install hudochenkov/sshpass/sshpass`).
 - Debian 12 (Bookworm). Backend DB SQLite `backend/data/brain.db` — **backup before risky ops**.
 - Live features (deployed): server-side cookie OAuth; "workout/food/weight for all
-  users" + body-profile onboarding (English/knowledge-graph stay admin-only,
-  vault-dependent); English mistake capture — full lesson transcript → LLM extracts
-  every mistake with a category → «Где я косячу» patterns screen.
+  users" + body-profile onboarding; **English for ALL users** (2026-07-04): review/
+  drills/grammar/verbs/speaking/progress open to every account; lessons arrive via
+  the owner's vault ingest (still admin-only) OR the new **PDF lesson upload**
+  (`POST /api/english/review/lessons/upload` — pypdf text → LLM lesson structure →
+  cards; sha256 dedup; stored transcript + `/lessons/reparse` re-derive). Only the
+  knowledge graph + vault ingest/seeds stay admin-only. English mistake capture —
+  full lesson transcript → LLM extracts every mistake with a category → «Где я
+  косячу» patterns screen.
+- PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
+  from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
+- Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
 
 ## Multi-user vault model (decided 2026-05-27 — Option B: E2E for all)
 
