@@ -163,7 +163,12 @@ data migration was relayed through the Mac.)
   cards; sha256 dedup; stored transcript + `/lessons/reparse` re-derive). Only the
   knowledge graph + vault ingest/seeds stay admin-only. English mistake capture —
   full lesson transcript → LLM extracts every mistake with a category → «Где я
-  косячу» patterns screen.
+  косячу» patterns screen. **Speaking error capture** (2026-07-04): every speaking
+  analysis persists mistakes as review cards (`source_path="speaking"`); a repeated
+  mistake bumps `lapses` + goes due now instead of duplicating. Speaking hub:
+  `GET /speaking/mistakes` (what to fix + how), `POST /speaking/generate-session`
+  (mode=mistakes — prompts targeted at YOUR recurring errors / mode=topic), plus
+  the classic per-tense sets; progress has a speaking coverage block.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
