@@ -22,11 +22,11 @@
 
 ## Tasks
 
-- [ ] **D1** `second-brain/SERVER.md` — переписать: актуальный прод = ферма `194.5.65.182`; таблица доменов→сервис→путь; 185 помечен как «decommissioned (диск умер)»; TLS certbot; nginx conf.d; ссылка на грабли миграции.
-- [ ] **D2** `dify-farm/infra/SERVER.md` — добавить раздел «Co-hosted сервисы на ферме» (PWA/vault/cards/sparkcards), список доменов + порты (:8766/:5984/:8080), правило compose-collision (`-p`, не `--remove-orphans`), Dify nginx 127.0.0.1:8088.
-- [ ] **D3** `second-brain-web/DEPLOYMENT_LOG.md` — новая запись «2026-07-01: аварийная миграция 185→194»: что, куда, деплой-пути, certbot, co-host, что осталось (sparkcards DNS).
-- [ ] **D4** `second-brain-web/CLAUDE.md` — деплой-раздел: сервер = ферма 194, certbot вместо acme, co-host рядом с Dify; предупреждение про compose `-p`.
-- [ ] **D5** `second-brain/CLAUDE.md` (hard-won rules) — пометка что PWA-сервер теперь `194.5.65.182`, TLS certbot; ссылка на `feedback_compose_project_collision`.
-- [ ] **D6** `dify-farm/.ai-factory/DESCRIPTION.md` — одна строка про co-host (если уместно).
+- [x] **D1** `second-brain/SERVER.md` — переписан: прод = ферма `194.5.65.182`; таблица доменов→сервис→путь; 185 в «decommissioned (диск умер)»; TLS certbot; nginx conf.d; tar-деплой; грабли compose. Коммит `715cc1a`.
+- [x] **D2** `dify-farm/infra/SERVER.md` — добавлен раздел co-host (PWA/vault/cards/sparkcards, домены+порты :8766/:5984/:8080), правило compose-collision (`-p cards-staging`, не `--remove-orphans`), Dify nginx 127.0.0.1:8088. Коммит `003972e`.
+- [x] **D3** `second-brain-web/DEPLOYMENT_LOG.md` — баннер «2026-07-01: миграция 185→194», HTTPS-домены, деплой-пути, certbot. Коммит `bdf5114`.
+- [x] **D4** `second-brain-web/CLAUDE.md` — N/A: файл 25 строк, ссылок на сервер/деплой нет → правка не требуется.
+- [x] **D5** `second-brain/CLAUDE.md` (hard-won rules) — вставлена пометка: PWA-сервер теперь `194.5.65.182`, certbot, nginx conf.d, tar-деплой, ссылка на `feedback_compose_project_collision`. Коммит `715cc1a`.
+- [x] **D6** `dify-farm/.ai-factory/DESCRIPTION.md` — пропущено намеренно: co-host уже покрыт в `infra/SERVER.md` (D2), дублировать в DESCRIPTION смысла нет.
 
-→ **Commit:** по репо: `docs(no-ref): point docs to 194 farm after 185 disk failure` (second-brain, second-brain-web, dify-farm — каждый свой).
+→ **Commits (сделаны):** second-brain `715cc1a`, second-brain-web `bdf5114`, dify-farm `003972e` — все запушены в `main`.
