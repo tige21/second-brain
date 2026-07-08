@@ -181,6 +181,11 @@ data migration was relayed through the Mac.)
   best-effort); daily «Ещё» refills via the focus rule (works with an empty
   deck); «📖 Правило» peek on the drill prompt screen from the cached grammar
   handbook (zero requests).
+  **Speaking level** (2026-07-09): `user_settings.english_speaking_level`
+  (a2 default) — A2/B1/B2 chip on the speaking hub; all prompt generators read
+  it server-side; prompt style v3 adds hard comprehensibility rails (one
+  thought per phrase, humor as optional spice) after the "unsayable jokes"
+  regression.
   **Word packs «Новые слова»** (2026-07-08): topic+level vocabulary packs
   (moving-abroad set + work + small talk + custom topics) — `word_packs`
   global cache (one LLM generation per topic+level, `force` regenerates);
