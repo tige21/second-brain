@@ -181,6 +181,11 @@ data migration was relayed through the Mac.)
   best-effort); daily «Ещё» refills via the focus rule (works with an empty
   deck); «📖 Правило» peek on the drill prompt screen from the cached grammar
   handbook (zero requests).
+  **Word packs «Новые слова»** (2026-07-08): topic+level vocabulary packs
+  (moving-abroad set + work + small talk + custom topics) — `word_packs`
+  global cache (one LLM generation per topic+level, `force` regenerates);
+  know/learn triage adds fwd+rev vocab cards under `vocab/<slug>` into the
+  FSRS deck; endpoints `/vocab/{topics,pack,add,stats}`.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
