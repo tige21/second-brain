@@ -176,6 +176,11 @@ data migration was relayed through the Mac.)
   **Ask-tutor** (2026-07-07): `POST /english/review/ask` — «Спросить, почему так»
   in the speaking drill result + on error/grammar review cards; grounded RU
   answers about the specific attempt/card, follow-ups carry ≤4 Q/A turns.
+  **Fun prompts + rule peek** (2026-07-08): shared lively style in all prompt
+  generators; daily session = 12 phrases (3 mistakes + 4 vetted + 5 fresh LLM,
+  best-effort); daily «Ещё» refills via the focus rule (works with an empty
+  deck); «📖 Правило» peek on the drill prompt screen from the cached grammar
+  handbook (zero requests).
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
