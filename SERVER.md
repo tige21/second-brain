@@ -202,6 +202,17 @@ data migration was relayed through the Mac.)
   иначе» / underlined «не прозвучало»); `progress.speaking.suggest_level_up`
   (14d ≥20 attempts ≥80% confident below b2) → level-up banner on the hub
   with 14-day localStorage snooze. No new tables/columns.
+  **Dialogue simulator «Диалоги»** (2026-07-09): turn-based voice role-play for
+  relocation scenarios (`services/english_dialogue.py` — 6 presets: rent-viewing,
+  bank-account, doctor-appointment, pharmacy-shop, job-smalltalk, landlord-problem
+  + custom topic); endpoints `/dialogue/{scenarios,start,turn}` (turn: multipart
+  voice via Whisper EN or JSON text); one LLM call per turn replies in character
+  AND reviews the utterance — errors go through the same `ingest_speaking_mistakes`
+  capture (repeats bump lapses); AI drives to the goal in ~8 user turns, hard cap
+  10 (done forced in code); level (A2/B1/B2) applied server-side; chat UI
+  `dialogue-sim.tsx` (auto-TTS of AI replies, 🇷🇺 hints, inline per-turn review,
+  end summary); activity kind `dialogue`. Stateless server — client sends full
+  history each turn, no new tables/columns.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
