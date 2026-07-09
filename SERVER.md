@@ -191,6 +191,17 @@ data migration was relayed through the Mac.)
   global cache (one LLM generation per topic+level, `force` regenerates);
   know/learn triage adds fwd+rev vocab cards under `vocab/<slug>` into the
   FSRS deck; endpoints `/vocab/{topics,pack,add,stats}`.
+  **Listening quick wins** (2026-07-09): client TTS via `speechSynthesis`
+  (`frontend/src/lib/tts.ts`, zero backend/cost) — 🔊 buttons on review cards
+  / vocab triage / drill result + auto-speak of the corrected sentence;
+  «На слух» listen-and-repeat drill (RU hidden, reference spoken; card honestly
+  disabled without speechSynthesis); daily session best-effort adds ≤2 phrases
+  forcing recent (7d) weak vocab words (`recent_vocab_terms` +
+  `generate_vocab_prompts`, log marker `vocab_prompts=N`); pronunciation
+  word-diff in the drill result (LCS, contraction-aware — amber «расслышалось
+  иначе» / underlined «не прозвучало»); `progress.speaking.suggest_level_up`
+  (14d ≥20 attempts ≥80% confident below b2) → level-up banner on the hub
+  with 14-day localStorage snooze. No new tables/columns.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
