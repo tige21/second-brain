@@ -213,6 +213,15 @@ data migration was relayed through the Mac.)
   `dialogue-sim.tsx` (auto-TTS of AI replies, 🇷🇺 hints, inline per-turn review,
   end summary); activity kind `dialogue`. Stateless server — client sends full
   history each turn, no new tables/columns.
+  **Friend chat + re-say retry** (2026-07-09): `friend-chat` — 7th dialogue
+  preset with `open_ended: True` (no goal-driving, no 10-turn cap; done only
+  when the student says goodbye); «Закончить» button → `/dialogue/turn
+  {wrap:true}` → `wrap_dialogue()` farewell + grounded RU wrap-note, no mistake
+  capture; «Сказать правильно» retry under every mistake review chip (all
+  dialogue modes): voice re-say checked against the corrected phrase via the
+  existing `/speaking/analyze` (reference=corrected, pronunciation diff free),
+  text re-type checked client-side via word-diff (zero LLM) — retries never
+  touch dialogue history or turn counters. No new endpoints/tables.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
