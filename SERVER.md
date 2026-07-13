@@ -222,6 +222,19 @@ data migration was relayed through the Mac.)
   existing `/speaking/analyze` (reference=corrected, pronunciation diff free),
   text re-type checked client-side via word-diff (zero LLM) — retries never
   touch dialogue history or turn counters. No new endpoints/tables.
+  **Streaks redesign** (2026-07-13, по Mobbin «Why Streaks Work»): единый
+  движок серий english+workout (`services/streaks.py`) — НОВЫЕ ТАБЛИЦЫ
+  `streak_days` (append-only локальные дни, `kind activity|freeze`) +
+  `streak_states` (current/longest/freezes); границы дня по
+  `timezone_offset` (фикс UTC-бага), freeze 1-за-7-дней cap 2 с ленивым
+  мостом, воркаут schedule-aware (дни отдыха не рвут серию); бэкфилл в
+  lifespan (лог `streak backfill: english=N workout=M`); endpoint
+  `GET /api/streaks/{domain}` (SW NetworkOnly); `🔥 N` в ежедневных пушах +
+  новый вечерний kind `streak_risk` (21:00 локально, преф `streak_risk`);
+  UI: StreakCard + heatmap 16 недель + Portal-оверлей празднования вех
+  (7/14/30/60/100/365), comeback-фрейминг вместо счётчика пропусков.
+  Проверка миграции: `sqlite3 data/brain.db "PRAGMA table_info(streak_days)"`.
+  Док: `second-brain-web/docs/streaks.md`.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
