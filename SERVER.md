@@ -252,6 +252,15 @@ data migration was relayed through the Mac.)
   `data/brain.db.bak-20261010-couple-planner`. На ферме нет `sqlite3`
   CLI — проверять таблицы через `.venv/bin/python -c "import sqlite3…"`.
   Доки: `second-brain-web/docs/partner-calendar.md`, `docs/week-planner.md`.
+  **Главная = бумажный «План дня» + калории/вес удалены** (2026-10-10, main
+  070f821): лист по дням недели (события, блоки «Недели», задачи с ⏰ и без
+  времени), «Запланировать» задачу на день+время → `POST /api/planner/entries`,
+  `GET /api/planner/free-slots`; стикер партнёра, бумажный попап. Еда и вес
+  удалены целиком (`/api/food*` → 404, `/api/body/nutrition|weight*` убраны,
+  остался `GET|PATCH /api/body/profile`); таблицы `food_logs`/`weight_logs` и
+  колонки `target_*` В БАЗЕ ОСТАВЛЕНЫ (данные Элины). На сервере стёрты
+  удалённые модули (tar их не удаляет: `rm` по `git diff --diff-filter=D`).
+  Бэкап: `data/brain.db.bak-20261010-paper-day-plan`.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
