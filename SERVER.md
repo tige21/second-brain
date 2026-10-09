@@ -235,6 +235,23 @@ data migration was relayed through the Mac.)
   (7/14/30/60/100/365), comeback-фрейминг вместо счётчика пропусков.
   Проверка миграции: `sqlite3 data/brain.db "PRAGMA table_info(streak_days)"`.
   Док: `second-brain-web/docs/streaks.md`.
+  **Календарь пары + «Неделя»** (2026-10-10): (1) партнёр — приглашение по
+  email → accept (`/api/partner*`, таблица `partner_links`); её календарь
+  читается ЕЁ токеном, ошибки её токена = 409 `partner_unavailable` (никогда
+  401); добавлять события в её календарь можно (тег `sb_added_by`, править/
+  удалять — только свои) + пуш-kind `partner_event`; UI: чипы «Я/Имя/Вместе»,
+  «Вместе» = две колонки дня. (2) «Неделя» `/planner` (`/api/planner*`,
+  таблицы `planner_items`, `week_plans`, `plan_entries` [AUTOINCREMENT —
+  id события Google `sbp<hex>`], `planner_checkins`): дамп текста → LLM →
+  дела + Google Tasks; LLM предлагает блоки, `planner_schedule.py`
+  проверяет; блоки пишутся в Google Calendar; попап утро/вечер (20:00
+  локально) один раз за день на все устройства. Модель
+  `PLANNER_MODEL or OPENAI_MODEL` (не задан → gpt-5.4-mini; смоук
+  2026-10-10: parse 4с, plan 3с). Generate держит per-process lock —
+  uvicorn ДОЛЖЕН остаться в 1 воркер. Бэкап перед деплоем:
+  `data/brain.db.bak-20261010-couple-planner`. На ферме нет `sqlite3`
+  CLI — проверять таблицы через `.venv/bin/python -c "import sqlite3…"`.
+  Доки: `second-brain-web/docs/partner-calendar.md`, `docs/week-planner.md`.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
