@@ -261,6 +261,12 @@ data migration was relayed through the Mac.)
   колонки `target_*` В БАЗЕ ОСТАВЛЕНЫ (данные Элины). На сервере стёрты
   удалённые модули (tar их не удаляет: `rm` по `git diff --diff-filter=D`).
   Бэкап: `data/brain.db.bak-20261010-paper-day-plan`.
+  **Paper v3** (2026-10-10, main 085bd6e, только фронт, бандл
+  `index-BwykKoqo.js`): галочка зачёркивает строку на месте → через 0,7 с вниз
+  к выполненным; одна шторка «Запланировать» (vaul) для задачи И события —
+  открывается и с главной, и с «+» календаря (событие на любую дату, в т.ч.
+  прошлую); стикер партнёра → её бумажный календарь; `useNetwork` больше не
+  делает `invalidateQueries()` всего кэша (загрузка 12→7 запросов, фон 6+→0–1).
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
