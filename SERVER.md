@@ -273,6 +273,8 @@ data migration was relayed through the Mac.)
   Perf (main 8c5efd4, бандл `index-D1uUcG-c.js`): наклонённый лист — свой
   GPU-слой (`will-change: transform`), в WebKit кадры 45–65 → ~20 мс; шторки
   больше не перезапрашивают tasks/settings/partner при каждом открытии.
+  Кэш (main, след. коммит): галочка пишет ответ сервера прямо в RQ-кэш — ни одного
+  GET после галочки (было: весь список задач через 5 с, неделя+today после блока).
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
