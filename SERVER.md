@@ -267,6 +267,9 @@ data migration was relayed through the Mac.)
   открывается и с главной, и с «+» календаря (событие на любую дату, в т.ч.
   прошлую); стикер партнёра → её бумажный календарь; `useNetwork` больше не
   делает `invalidateQueries()` всего кэша (загрузка 12→7 запросов, фон 6+→0–1).
+  Затем (main d3bcdd6, бандл `index-DwiuxlNL.js`): зачёркнутую задачу можно
+  вернуть — тап открывает её карточку («Вернуть в активные»), а тост после
+  каждой галочки (задача/блок) несёт «Вернуть» на 5 с.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
