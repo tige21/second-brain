@@ -277,6 +277,8 @@ data migration was relayed through the Mac.)
   GET после галочки (было: весь список задач через 5 с, неделя+today после блока).
   Ререндеры (main, след. коммит): галочка 120→29, ввод 5 букв в «Запланировать»
   315→70, открыть/закрыть шторку 32→22, возврат в приложение 4→0.
+  Карточки события/задачи/дела и лист Элины: состояние под шторкой — ввод 5 букв
+  в названии 245→5 рендеров.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
