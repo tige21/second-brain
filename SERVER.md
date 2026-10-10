@@ -270,6 +270,9 @@ data migration was relayed through the Mac.)
   Затем (main d3bcdd6, бандл `index-DwiuxlNL.js`): зачёркнутую задачу можно
   вернуть — тап открывает её карточку («Вернуть в активные»), а тост после
   каждой галочки (задача/блок) несёт «Вернуть» на 5 с.
+  Perf (main 8c5efd4, бандл `index-D1uUcG-c.js`): наклонённый лист — свой
+  GPU-слой (`will-change: transform`), в WebKit кадры 45–65 → ~20 мс; шторки
+  больше не перезапрашивают tasks/settings/partner при каждом открытии.
 - PWA nginx vhost: `client_max_body_size 25m`, `proxy_read_timeout 300s` (raised
   from 120s on 2026-07-04 for the PDF-lesson LLM pipeline, up to ~240s worst case).
 - Server venv extras the PWA needs: `pypdf` (PDF lesson upload), `python-multipart`.
